@@ -178,10 +178,6 @@ spec:
             items:
               - key: ca.crt
                 path: ca.crt
-        - name: gcp-credentials
-          secret:
-            secretName: wazuh-gcp-collector-key
-            defaultMode: 0400
       initContainers:
         - name: prepare-agent
           image: wazuh-gcp-collector
@@ -240,7 +236,6 @@ spec:
           volumeMounts:
             - { name: data, mountPath: /var/ossec/etc, subPath: etc }
             - { name: config, mountPath: /wazuh-config-mount, readOnly: true }
-            - { name: gcp-credentials, mountPath: /etc/wazuh-gcp, readOnly: true }
             - { name: workload-identity, mountPath: /etc/wazuh-gcp-workload-identity, readOnly: true }
   volumeClaimTemplates:
     - apiVersion: v1
