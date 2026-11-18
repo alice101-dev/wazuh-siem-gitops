@@ -47,6 +47,8 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
 - Both sinks use the same filter (`security_log_filter` in
   [`log-router/staging.tfvars`](environments/staging/log-router/staging.tfvars)): Admin Activity,
   Data Access, System Event, Policy Denied and Access Transparency audit logs, and firewall rule logs.
+  Both exclude the leader-election lease renewals of GKE system components (`leases.update` by a
+  `system:` principal), which are most of the Kubernetes audit volume and carry no security signal.
 - Admin Activity, System Event and Policy Denied logs are always on. The `audit-logs` workspace turns on
   Data Access logs for `iam`, `secretmanager` and `cloudkms`; the `DATA_READ` setting of `iam` also covers
   service account token and signing calls (`iamcredentials.googleapis.com`), which have no setting of their
