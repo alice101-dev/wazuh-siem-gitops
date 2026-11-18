@@ -43,8 +43,8 @@ flowchart LR
     subgraph siem["pool siem · Spot · tainted"]
       master["manager master"]
       workers["manager workers ×2"]
-      icm["indexer cluster-manager ×3"]
-      idata["indexer data ×3"]
+      icm["indexer cluster-manager"]
+      idata["indexer data"]
     end
   end
 
@@ -63,13 +63,13 @@ flowchart LR
 
 | Component | Replicas | Placement | Storage |
 |---|---|---|---|
-| Indexer cluster-manager | 3 | pool `siem` | 5 Gi `pd-ssd-cmek` |
-| Indexer data (+ ingest) | 3, scale out by `replicas` | pool `siem` | 50 Gi `pd-ssd-cmek` |
+| Indexer cluster-manager | 1 | pool `siem` | 5 Gi `pd-ssd-cmek` |
+| Indexer data (+ ingest) | 1 | pool `siem` | 50 Gi `pd-ssd-cmek` |
 | Manager master / worker | 1 / 2, scale out workers | pool `siem` | 10 Gi `pd-ssd-cmek` |
 | Dashboard | 1, stateless | pool `general` | — |
 | GCP collector | 1 | pool `general` | 1 Gi agent identity |
 
-Every shard has one replica on another data node, so the indexer survives the loss of one Spot node.
+Shards have no replica: the single data node keeps every shard on its persistent disk, so a Spot preemption stops the indexer until the pod is rescheduled, and no data is lost.
 
 ## Keyless Google Cloud access
 

@@ -40,8 +40,8 @@ node_pools = {
   }
   "siem" = {
     machine_type   = "e2-standard-4"
-    min_node_count = 3
-    max_node_count = 6
+    min_node_count = 1
+    max_node_count = 3
     spot           = true
     disk_size_gb   = 50
     disk_type      = "pd-ssd"

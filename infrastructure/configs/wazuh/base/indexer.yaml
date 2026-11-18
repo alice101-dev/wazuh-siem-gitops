@@ -59,7 +59,7 @@ kind: StatefulSet
 metadata:
   name: wazuh-indexer-cluster-manager
 spec:
-  replicas: 3
+  replicas: 1
   serviceName: wazuh-indexer-nodes
   podManagementPolicy: Parallel
   persistentVolumeClaimRetentionPolicy:
@@ -205,9 +205,9 @@ spec:
             - name: cluster.name
               value: wazuh-cluster
             - name: discovery.seed_hosts
-              value: wazuh-indexer-cluster-manager-0.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-1.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-2.wazuh-indexer-nodes
+              value: wazuh-indexer-cluster-manager-0.wazuh-indexer-nodes
             - name: cluster.default_number_of_replicas
-              value: "1"
+              value: "0"
             - name: bootstrap.memory_lock
               value: "false"
             - name: node.max_local_storage_nodes
@@ -217,7 +217,7 @@ spec:
             - name: OPENSEARCH_JAVA_OPTS
               value: -Xms512m -Xmx512m -Dlog4j2.formatMsgNoLookups=true
             - name: cluster.initial_cluster_manager_nodes
-              value: wazuh-indexer-cluster-manager-0,wazuh-indexer-cluster-manager-1,wazuh-indexer-cluster-manager-2
+              value: wazuh-indexer-cluster-manager-0
           volumeMounts:
             - name: wazuh-credentials
               mountPath: /run/secrets
@@ -269,7 +269,7 @@ kind: StatefulSet
 metadata:
   name: wazuh-indexer-data
 spec:
-  replicas: 3
+  replicas: 1
   serviceName: wazuh-indexer-nodes
   podManagementPolicy: Parallel
   persistentVolumeClaimRetentionPolicy:
@@ -415,9 +415,9 @@ spec:
             - name: cluster.name
               value: wazuh-cluster
             - name: discovery.seed_hosts
-              value: wazuh-indexer-cluster-manager-0.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-1.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-2.wazuh-indexer-nodes
+              value: wazuh-indexer-cluster-manager-0.wazuh-indexer-nodes
             - name: cluster.default_number_of_replicas
-              value: "1"
+              value: "0"
             - name: bootstrap.memory_lock
               value: "false"
             - name: node.max_local_storage_nodes

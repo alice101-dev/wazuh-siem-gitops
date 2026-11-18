@@ -83,13 +83,13 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
 | Pool | Machine | Nodes | Spot | Taint | Runs |
 |---|---|---|---|---|---|
 | `staging-general` | e2-standard-4 | 1–3 | yes | — | Argo CD, controllers, Wazuh dashboard, GCP collector |
-| `staging-siem` | e2-standard-4 | 3–6 | yes | `workload=siem:NoSchedule` | Wazuh indexer and manager |
+| `staging-siem` | e2-standard-4 | 1–3 | yes | `workload=siem:NoSchedule` | Wazuh indexer and manager |
 
 - The `staging-siem` pool sets `vm.max_map_count=262144` through the GKE node system config, as the
   indexer (OpenSearch) requires, so no workload needs a privileged container to change it.
-- Every pool runs on Spot VMs. The indexer keeps one replica of every shard on another data node and
-  three cluster-manager nodes, so it survives the preemption of one node; losing two cluster-manager
-  nodes at once stops the cluster until GKE replaces them.
+- Every pool runs on Spot VMs. The indexer runs one cluster-manager node and one data node without
+  shard replicas, so a preemption on the `siem` pool stops the indexer until GKE replaces the node;
+  the data stays on the persistent disks.
 - Zonal cluster in `asia-southeast2-a`: the control plane is covered by the GKE free tier.
 - Private nodes; `kubectl` and the Terraform Helm provider use the IAM-gated **DNS-based control plane
   endpoint**, while the IP endpoint is restricted to the VPC.
