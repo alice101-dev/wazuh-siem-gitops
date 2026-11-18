@@ -66,7 +66,7 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
 | Data | Key | Granted to |
 |---|---|---|
 | Kubernetes Secrets in etcd (application-layer secrets encryption) | `staging-siem/gke-secrets` | GKE service agent `service-<number>@container-engine-robot` |
-| Node boot disks (`pd-standard` in `general`, `pd-ssd` in `siem`) | `staging-siem/gke-disks` | Compute Engine service agent `service-<number>@compute-system` |
+| Node boot disks (`pd-standard`) | `staging-siem/gke-disks` | Compute Engine service agent `service-<number>@compute-system` |
 | Persistent volumes (PD CSI StorageClass `disk-encryption-kms-key`) | `staging-siem/gke-disks` | Compute Engine service agent |
 
 - Keys are symmetric, software protection, in `asia-southeast2` (GKE needs the key in the cluster region),

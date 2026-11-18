@@ -44,7 +44,7 @@ node_pools = {
     max_node_count = 3
     spot           = true
     disk_size_gb   = 50
-    disk_type      = "pd-ssd"
+    disk_type      = "pd-standard"
     labels         = { "workload" = "siem" }
     sysctls        = { "vm.max_map_count" = "262144" }
     taints         = [{ key = "workload", value = "siem", effect = "NO_SCHEDULE" }]
