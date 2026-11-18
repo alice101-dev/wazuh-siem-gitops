@@ -20,6 +20,12 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  name: wazuh-gcp-collector
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
   name: wazuh-enrollment
 automountServiceAccountToken: false
 ---
@@ -145,6 +151,7 @@ spec:
         app: wazuh-gcp-collector
         app.kubernetes.io/component: wazuh-agent
     spec:
+      serviceAccountName: wazuh-gcp-collector
       automountServiceAccountToken: false
       nodeSelector:
         workload: general
@@ -152,6 +159,9 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       volumes:
+        - name: workload-identity
+          configMap:
+            name: wazuh-gcp-collector-workload-identity
         - name: config-template
           configMap:
             name: wazuh-gcp-collector-config
@@ -231,6 +241,7 @@ spec:
             - { name: data, mountPath: /var/ossec/etc, subPath: etc }
             - { name: config, mountPath: /wazuh-config-mount, readOnly: true }
             - { name: gcp-credentials, mountPath: /etc/wazuh-gcp, readOnly: true }
+            - { name: workload-identity, mountPath: /etc/wazuh-gcp-workload-identity, readOnly: true }
   volumeClaimTemplates:
     - apiVersion: v1
       kind: PersistentVolumeClaim

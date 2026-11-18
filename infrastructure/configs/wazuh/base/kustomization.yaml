@@ -18,6 +18,9 @@ configMapGenerator:
   - name: wazuh-gcp-collector-config
     files:
       - collector/ossec.conf
+  - name: wazuh-gcp-collector-workload-identity
+    files:
+      - credentials.json=collector/workload-identity.json
   - name: wazuh-alerting-monitor
     files:
       - alerting/findings-monitor.json
@@ -32,4 +35,4 @@ images:
   - name: wazuh/wazuh-dashboard
     newTag: 5.0.0-rc2
   - name: wazuh-gcp-collector
-    newTag: 332f45fe
+    newTag: c047f37f

@@ -165,6 +165,12 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 8080 }
+    - to:
         - podSelector: { matchLabels: { app: wazuh-manager } }
       ports:
         - { protocol: TCP, port: 1517 }

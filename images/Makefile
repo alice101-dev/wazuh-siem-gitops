@@ -5,7 +5,7 @@ REGION        ?= asia-southeast2
 IMAGE         := wazuh-gcp-collector
 REGISTRY       = $(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(ENV)-siem
 KUSTOMIZATION := ../infrastructure/configs/wazuh/base/kustomization.yaml
-TAG           := $(shell cat $(IMAGE)/Dockerfile $(IMAGE)/requirements.txt | shasum -a 256 | cut -c1-8)
+TAG           := $(shell cat $(IMAGE)/Dockerfile $(IMAGE)/requirements.txt $(IMAGE)/patch_wodle.py | shasum -a 256 | cut -c1-8)
 
 .PHONY: check-project tag release
 
