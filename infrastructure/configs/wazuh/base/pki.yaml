@@ -1,0 +1,190 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: wazuh-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-root-ca
+spec:
+  isCA: true
+  commonName: Wazuh Root CA
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-root-ca
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 4096
+    encoding: PKCS8
+    rotationPolicy: Never
+  issuerRef:
+    name: wazuh-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: wazuh-ca
+spec:
+  ca:
+    secretName: wazuh-root-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-indexer-node
+spec:
+  commonName: indexer
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-indexer-node-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages: [server auth, client auth, digital signature, key encipherment]
+  dnsNames:
+    - wazuh-indexer
+    - wazuh-indexer.wazuh.svc
+    - wazuh-indexer.wazuh.svc.cluster.local
+    - "*.wazuh-indexer-nodes"
+    - "*.wazuh-indexer-nodes.wazuh.svc"
+    - "*.wazuh-indexer-nodes.wazuh.svc.cluster.local"
+    - localhost
+  issuerRef:
+    name: wazuh-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-indexer-admin
+spec:
+  commonName: admin
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-indexer-admin-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages: [client auth, digital signature, key encipherment]
+  issuerRef:
+    name: wazuh-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-manager
+spec:
+  commonName: manager
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-manager-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages: [client auth, digital signature, key encipherment]
+  issuerRef:
+    name: wazuh-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-manager-remoted
+spec:
+  commonName: wazuh-agents
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-manager-remoted-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages: [server auth, digital signature, key encipherment]
+  dnsNames:
+    - wazuh-agents
+    - wazuh-agents.wazuh.svc
+    - wazuh-agents.wazuh.svc.cluster.local
+  issuerRef:
+    name: wazuh-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-manager-apid
+spec:
+  commonName: wazuh-api
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-manager-apid-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages: [server auth, digital signature, key encipherment]
+  dnsNames:
+    - wazuh-api
+    - wazuh-api.wazuh.svc
+    - wazuh-api.wazuh.svc.cluster.local
+    - localhost
+  issuerRef:
+    name: wazuh-ca
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wazuh-dashboard
+spec:
+  commonName: wazuh-dashboard
+  subject:
+    organizations: [Wazuh]
+    organizationalUnits: [Wazuh]
+  secretName: wazuh-dashboard-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages: [server auth, digital signature, key encipherment]
+  dnsNames:
+    - wazuh-dashboard
+    - wazuh-dashboard.wazuh.svc
+    - wazuh-dashboard.wazuh.svc.cluster.local
+    - localhost
+  issuerRef:
+    name: wazuh-ca
+    kind: Issuer

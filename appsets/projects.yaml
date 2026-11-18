@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Operators, the Wazuh SIEM and shared configuration
+  sourceRepos:
+    - https://github.com/alice101-dev/wazuh-siem-gitops.git
+    - https://charts.jetstack.io
+    - https://charts.external-secrets.io
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"

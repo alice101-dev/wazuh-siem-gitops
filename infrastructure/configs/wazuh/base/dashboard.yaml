@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-dashboard
+  labels:
+    app: wazuh-dashboard
+spec:
+  selector:
+    app: wazuh-dashboard
+  ports:
+    - name: dashboard
+      port: 443
+      targetPort: 443
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wazuh-dashboard
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: wazuh-dashboard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wazuh-dashboard
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: wazuh-dashboard
+  template:
+    metadata:
+      labels:
+        app: wazuh-dashboard
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        workload: general
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: wazuh-dashboard
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "443"
+      volumes:
+        - name: wazuh-credentials
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: wazuh-credentials-secret
+          secret:
+            secretName: wazuh-credentials
+            defaultMode: 0400
+            items:
+              - key: dashboard.env
+                path: wazuh-credentials
+        - name: dashboard-certs-raw
+          projected:
+            defaultMode: 0400
+            sources:
+              - secret:
+                  name: wazuh-dashboard-tls
+                  items:
+                    - { key: tls.crt, path: dashboard.pem }
+                    - { key: tls.key, path: dashboard-key.pem }
+                    - { key: ca.crt, path: root-ca.pem }
+        - name: dashboard-certs
+          emptyDir: {}
+      initContainers:
+        - name: install-credentials
+          image: wazuh/wazuh-dashboard
+          command:
+            - /bin/sh
+            - -c
+            - umask 077 && cp /credentials-secret/wazuh-credentials /run/secrets/wazuh-credentials && chmod 0400 /run/secrets/wazuh-credentials
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - { name: wazuh-credentials-secret, mountPath: /credentials-secret, readOnly: true }
+            - { name: wazuh-credentials, mountPath: /run/secrets }
+        - name: install-certs
+          image: wazuh/wazuh-dashboard
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              certs=/certs-final
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/dashboard.pem "${certs}/dashboard.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/dashboard-key.pem "${certs}/dashboard-key.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/root-ca.pem "${certs}/indexer-ca.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/root-ca.pem "${certs}/manager-ca.pem"
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - { name: dashboard-certs-raw, mountPath: /tmp/certs-raw, readOnly: true }
+            - { name: dashboard-certs, mountPath: /certs-final }
+      containers:
+        - name: wazuh-dashboard
+          image: wazuh/wazuh-dashboard
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 1536Mi }
+          env:
+            - name: OPENSEARCH_HOSTS
+              value: https://wazuh-indexer:9200
+            - name: SERVER_SSL_ENABLED
+              value: "true"
+            - name: SERVER_SSL_CERTIFICATE
+              value: /usr/share/wazuh-dashboard/config/certs/dashboard.pem
+            - name: SERVER_SSL_KEY
+              value: /usr/share/wazuh-dashboard/config/certs/dashboard-key.pem
+            - name: OPENSEARCH_SSL_CERTIFICATE_AUTHORITIES
+              value: /usr/share/wazuh-dashboard/config/certs/indexer-ca.pem
+            - name: WAZUH_API_URL
+              value: https://wazuh-api
+            - name: WAZUH_API_CA
+              value: /usr/share/wazuh-dashboard/config/certs/manager-ca.pem
+          volumeMounts:
+            - { name: wazuh-credentials, mountPath: /run/secrets, readOnly: true }
+            - { name: dashboard-certs, mountPath: /usr/share/wazuh-dashboard/config/certs/dashboard.pem, subPath: dashboard.pem, readOnly: true }
+            - { name: dashboard-certs, mountPath: /usr/share/wazuh-dashboard/config/certs/dashboard-key.pem, subPath: dashboard-key.pem, readOnly: true }
+            - { name: dashboard-certs, mountPath: /usr/share/wazuh-dashboard/config/certs/indexer-ca.pem, subPath: indexer-ca.pem, readOnly: true }
+            - { name: dashboard-certs, mountPath: /usr/share/wazuh-dashboard/config/certs/manager-ca.pem, subPath: manager-ca.pem, readOnly: true }
+          ports:
+            - containerPort: 443
+              name: dashboard
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -k -s -o /dev/null https://localhost:443/app/login"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -kfsS -o /dev/null https://localhost:443/app/login"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -k -s -o /dev/null https://localhost:443/app/login"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3

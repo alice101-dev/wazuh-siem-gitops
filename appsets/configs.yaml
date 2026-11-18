@@ -1,0 +1,96 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: configs
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/alice101-dev/wazuh-siem-gitops.git
+              revision: main
+              files:
+                - path: infrastructure/configs/*/config.yaml
+          - clusters:
+              selector:
+                matchLabels:
+                  enable_{{ .requires }}: "true"
+                matchExpressions:
+                  - key: env
+                    operator: Exists
+  template:
+    metadata:
+      name: "config-{{ .path.basename }}"
+      labels:
+        layer: configs
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/alice101-dev/wazuh-siem-gitops.git
+        targetRevision: main
+        path: "{{ .path.path }}/{{ .metadata.labels.env }}"
+        kustomize:
+          images:
+            - wazuh-gcp-collector={{ index .metadata.annotations "platform/image-registry" }}/wazuh-gcp-collector
+          patches:
+            - target:
+                group: external-secrets.io
+                kind: ClusterSecretStore
+                name: gcp-secret-manager
+              patch: |-
+                - op: replace
+                  path: /spec/provider/gcpsm/projectID
+                  value: {{ index .metadata.annotations "platform/project-id" }}
+            - target:
+                group: storage.k8s.io
+                kind: StorageClass
+                name: pd-ssd-cmek
+              patch: |-
+                - op: replace
+                  path: /parameters/disk-encryption-kms-key
+                  value: {{ index .metadata.annotations "platform/volume-kms-key" }}
+            - target:
+                kind: ConfigMap
+                name: wazuh-gcp-collector-settings
+              patch: |-
+                - op: replace
+                  path: /data/project_id
+                  value: {{ index .metadata.annotations "platform/project-id" }}
+                - op: replace
+                  path: /data/subscription
+                  value: {{ index .metadata.annotations "platform/gcp-subscription" }}
+      destination:
+        name: "{{ .name }}"
+        namespace: "{{ .namespace }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+          - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 20
+          refresh: true
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+  templatePatch: |
+    {{- if or (hasKey . "ignoreDifferences") (hasKey . "envScoped") }}
+    spec:
+      {{- if hasKey . "envScoped" }}
+      destination:
+        namespace: "{{ .metadata.labels.env }}-{{ .namespace }}"
+      {{- end }}
+      {{- if hasKey . "ignoreDifferences" }}
+      ignoreDifferences: {{ toJson .ignoreDifferences }}
+      {{- end }}
+    {{- end }}

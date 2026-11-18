@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: wazuh
+resources:
+  - pki.yaml
+  - credentials.yaml
+  - network-policies.yaml
+  - indexer.yaml
+  - manager.yaml
+  - dashboard.yaml
+  - collector.yaml
+configMapGenerator:
+  - name: wazuh-manager-config
+    files:
+      - manager/wazuh-manager.conf
+  - name: wazuh-gcp-collector-config
+    files:
+      - collector/ossec.conf
+images:
+  - name: wazuh/wazuh-indexer
+    newTag: 5.0.0-rc2
+  - name: wazuh/wazuh-manager
+    newTag: 5.0.0-rc2
+  - name: wazuh/wazuh-dashboard
+    newTag: 5.0.0-rc2
+  - name: wazuh-gcp-collector
+    newTag: 332f45fe

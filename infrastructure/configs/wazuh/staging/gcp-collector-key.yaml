@@ -1,0 +1,16 @@
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: wazuh-gcp-collector-key
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: gcp-secret-manager
+  target:
+    name: wazuh-gcp-collector-key
+    creationPolicy: Owner
+  data:
+    - secretKey: credentials.json
+      remoteRef:
+        key: staging-siem-gcp-collector-key

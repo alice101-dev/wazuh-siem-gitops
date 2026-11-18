@@ -1,0 +1,188 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: indexer-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-indexer
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: wazuh-dashboard } }
+        - podSelector: { matchLabels: { app: wazuh-manager } }
+      ports:
+        - { protocol: TCP, port: 9200 }
+    - from:
+        - podSelector: { matchLabels: { app: wazuh-indexer } }
+      ports:
+        - { protocol: TCP, port: 9200 }
+        - { protocol: TCP, port: 9300 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: indexer-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-indexer
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-indexer } }
+      ports:
+        - { protocol: TCP, port: 9200 }
+        - { protocol: TCP, port: 9300 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dashboard-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-dashboard
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-indexer, role: data } }
+      ports:
+        - { protocol: TCP, port: 9200 }
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-manager, node-type: master } }
+      ports:
+        - { protocol: TCP, port: 55000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: manager-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-manager
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-indexer, role: data } }
+      ports:
+        - { protocol: TCP, port: 9200 }
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-manager } }
+      ports:
+        - { protocol: TCP, port: 1516 }
+        - { protocol: TCP, port: 55000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: manager-egress-external
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-manager
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: manager-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-manager
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: wazuh-manager } }
+      ports:
+        - { protocol: TCP, port: 1516 }
+        - { protocol: TCP, port: 55000 }
+    - from:
+        - podSelector: { matchLabels: { app: wazuh-dashboard } }
+        - podSelector: { matchLabels: { app.kubernetes.io/component: wazuh-enrollment } }
+      ports:
+        - { protocol: TCP, port: 55000 }
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/component: wazuh-agent } }
+      ports:
+        - { protocol: TCP, port: 1517 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collector-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-gcp-collector
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-manager } }
+      ports:
+        - { protocol: TCP, port: 1517 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: enrollment-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: wazuh-enrollment
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-manager, node-type: master } }
+      ports:
+        - { protocol: TCP, port: 55000 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: TCP, port: 443 }

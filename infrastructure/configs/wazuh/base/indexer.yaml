@@ -1,0 +1,469 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-indexer-nodes
+  labels:
+    app: wazuh-indexer
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: wazuh-indexer
+  ports:
+    - name: indexer-rest
+      port: 9200
+      targetPort: 9200
+    - name: indexer-nodes
+      port: 9300
+      targetPort: 9300
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-indexer
+  labels:
+    app: wazuh-indexer
+spec:
+  selector:
+    app: wazuh-indexer
+    role: data
+  ports:
+    - name: indexer-rest
+      port: 9200
+      targetPort: 9200
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wazuh-indexer-cluster-manager
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: wazuh-indexer
+      role: cluster-manager
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wazuh-indexer-data
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: wazuh-indexer
+      role: data
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-indexer-cluster-manager
+spec:
+  replicas: 3
+  serviceName: wazuh-indexer-nodes
+  podManagementPolicy: Parallel
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: wazuh-indexer
+      role: cluster-manager
+  template:
+    metadata:
+      labels:
+        app: wazuh-indexer
+        role: cluster-manager
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      nodeSelector:
+        workload: siem
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: siem
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: wazuh-indexer
+                  role: cluster-manager
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: wazuh-credentials
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: wazuh-credentials-secret
+          secret:
+            secretName: wazuh-credentials
+            defaultMode: 0400
+            items:
+              - key: indexer.env
+                path: wazuh-credentials
+        - name: indexer-certs-raw
+          projected:
+            defaultMode: 0400
+            sources:
+              - secret:
+                  name: wazuh-indexer-node-tls
+                  items:
+                    - { key: tls.crt, path: indexer.pem }
+                    - { key: tls.key, path: indexer-key.pem }
+                    - { key: ca.crt, path: root-ca.pem }
+              - secret:
+                  name: wazuh-indexer-admin-tls
+                  items:
+                    - { key: tls.crt, path: admin.pem }
+                    - { key: tls.key, path: admin-key.pem }
+        - name: indexer-certs
+          emptyDir: {}
+      initContainers:
+        - name: install-credentials
+          image: wazuh/wazuh-indexer
+          command:
+            - /bin/sh
+            - -c
+            - umask 077 && cp /credentials-secret/wazuh-credentials /run/secrets/wazuh-credentials && chmod 0400 /run/secrets/wazuh-credentials
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: wazuh-credentials-secret
+              mountPath: /credentials-secret
+              readOnly: true
+            - name: wazuh-credentials
+              mountPath: /run/secrets
+        - name: install-certs
+          image: wazuh/wazuh-indexer
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              certs=/certs-final
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/indexer.pem "${certs}/indexer.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/indexer-key.pem "${certs}/indexer-key.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/root-ca.pem "${certs}/root-ca.pem"
+              install -o 0 -g 0 -m 0600 /tmp/certs-raw/admin.pem "${certs}/admin.pem"
+              install -o 0 -g 0 -m 0600 /tmp/certs-raw/admin-key.pem "${certs}/admin-key.pem"
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: indexer-certs-raw
+              mountPath: /tmp/certs-raw
+              readOnly: true
+            - name: indexer-certs
+              mountPath: /certs-final
+        - name: data-ownership
+          image: wazuh/wazuh-indexer
+          command:
+            - /bin/sh
+            - -c
+            - chown -R 101:101 /var/lib/wazuh-indexer
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/wazuh-indexer
+      containers:
+        - name: wazuh-indexer
+          image: wazuh/wazuh-indexer
+          resources:
+            requests: { cpu: "250m", memory: 1Gi }
+            limits: { memory: 1Gi }
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: node.name
+              value: $(POD_NAME)
+            - name: node.roles
+              value: "cluster_manager"
+            - name: network.host
+              value: "0.0.0.0"
+            - name: network.publish_host
+              value: $(POD_NAME).wazuh-indexer-nodes.$(POD_NAMESPACE).svc.cluster.local
+            - name: cluster.name
+              value: wazuh-cluster
+            - name: discovery.seed_hosts
+              value: wazuh-indexer-cluster-manager-0.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-1.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-2.wazuh-indexer-nodes
+            - name: cluster.default_number_of_replicas
+              value: "1"
+            - name: bootstrap.memory_lock
+              value: "false"
+            - name: node.max_local_storage_nodes
+              value: "3"
+            - name: plugins.security.allow_default_init_securityindex
+              value: "true"
+            - name: OPENSEARCH_JAVA_OPTS
+              value: -Xms512m -Xmx512m -Dlog4j2.formatMsgNoLookups=true
+            - name: cluster.initial_cluster_manager_nodes
+              value: wazuh-indexer-cluster-manager-0,wazuh-indexer-cluster-manager-1,wazuh-indexer-cluster-manager-2
+          volumeMounts:
+            - name: wazuh-credentials
+              mountPath: /run/secrets
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/wazuh-indexer
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/indexer-key.pem, subPath: indexer-key.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/indexer.pem, subPath: indexer.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/root-ca.pem, subPath: root-ca.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/admin.pem, subPath: admin.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/admin-key.pem, subPath: admin-key.pem, readOnly: true }
+          ports:
+            - containerPort: 9200
+              name: indexer-rest
+            - containerPort: 9300
+              name: indexer-nodes
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -fks https://localhost:9200/_plugins/_security/health | grep -q '\"status\":\"UP\"'"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -fks https://localhost:9200/_plugins/_security/health | grep -q '\"status\":\"UP\"'"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -fks https://localhost:9200/_plugins/_security/health | grep -q '\"status\":\"UP\"'"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: pd-ssd-cmek
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-indexer-data
+spec:
+  replicas: 3
+  serviceName: wazuh-indexer-nodes
+  podManagementPolicy: Parallel
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: wazuh-indexer
+      role: data
+  template:
+    metadata:
+      labels:
+        app: wazuh-indexer
+        role: data
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      nodeSelector:
+        workload: siem
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: siem
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: wazuh-indexer
+                  role: data
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: wazuh-credentials
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: wazuh-credentials-secret
+          secret:
+            secretName: wazuh-credentials
+            defaultMode: 0400
+            items:
+              - key: indexer.env
+                path: wazuh-credentials
+        - name: indexer-certs-raw
+          projected:
+            defaultMode: 0400
+            sources:
+              - secret:
+                  name: wazuh-indexer-node-tls
+                  items:
+                    - { key: tls.crt, path: indexer.pem }
+                    - { key: tls.key, path: indexer-key.pem }
+                    - { key: ca.crt, path: root-ca.pem }
+              - secret:
+                  name: wazuh-indexer-admin-tls
+                  items:
+                    - { key: tls.crt, path: admin.pem }
+                    - { key: tls.key, path: admin-key.pem }
+        - name: indexer-certs
+          emptyDir: {}
+      initContainers:
+        - name: install-credentials
+          image: wazuh/wazuh-indexer
+          command:
+            - /bin/sh
+            - -c
+            - umask 077 && cp /credentials-secret/wazuh-credentials /run/secrets/wazuh-credentials && chmod 0400 /run/secrets/wazuh-credentials
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: wazuh-credentials-secret
+              mountPath: /credentials-secret
+              readOnly: true
+            - name: wazuh-credentials
+              mountPath: /run/secrets
+        - name: install-certs
+          image: wazuh/wazuh-indexer
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              certs=/certs-final
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/indexer.pem "${certs}/indexer.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/indexer-key.pem "${certs}/indexer-key.pem"
+              install -o 0 -g 101 -m 0640 /tmp/certs-raw/root-ca.pem "${certs}/root-ca.pem"
+              install -o 0 -g 0 -m 0600 /tmp/certs-raw/admin.pem "${certs}/admin.pem"
+              install -o 0 -g 0 -m 0600 /tmp/certs-raw/admin-key.pem "${certs}/admin-key.pem"
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: indexer-certs-raw
+              mountPath: /tmp/certs-raw
+              readOnly: true
+            - name: indexer-certs
+              mountPath: /certs-final
+        - name: data-ownership
+          image: wazuh/wazuh-indexer
+          command:
+            - /bin/sh
+            - -c
+            - chown -R 101:101 /var/lib/wazuh-indexer
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/wazuh-indexer
+      containers:
+        - name: wazuh-indexer
+          image: wazuh/wazuh-indexer
+          resources:
+            requests: { cpu: "1", memory: 4Gi }
+            limits: { memory: 4Gi }
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: node.name
+              value: $(POD_NAME)
+            - name: node.roles
+              value: "data,ingest"
+            - name: network.host
+              value: "0.0.0.0"
+            - name: network.publish_host
+              value: $(POD_NAME).wazuh-indexer-nodes.$(POD_NAMESPACE).svc.cluster.local
+            - name: cluster.name
+              value: wazuh-cluster
+            - name: discovery.seed_hosts
+              value: wazuh-indexer-cluster-manager-0.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-1.wazuh-indexer-nodes,wazuh-indexer-cluster-manager-2.wazuh-indexer-nodes
+            - name: cluster.default_number_of_replicas
+              value: "1"
+            - name: bootstrap.memory_lock
+              value: "false"
+            - name: node.max_local_storage_nodes
+              value: "3"
+            - name: plugins.security.allow_default_init_securityindex
+              value: "true"
+            - name: OPENSEARCH_JAVA_OPTS
+              value: -Xms2g -Xmx2g -Dlog4j2.formatMsgNoLookups=true
+          volumeMounts:
+            - name: wazuh-credentials
+              mountPath: /run/secrets
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/wazuh-indexer
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/indexer-key.pem, subPath: indexer-key.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/indexer.pem, subPath: indexer.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/root-ca.pem, subPath: root-ca.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/admin.pem, subPath: admin.pem, readOnly: true }
+            - { name: indexer-certs, mountPath: /usr/share/wazuh-indexer/config/certs/admin-key.pem, subPath: admin-key.pem, readOnly: true }
+          ports:
+            - containerPort: 9200
+              name: indexer-rest
+            - containerPort: 9300
+              name: indexer-nodes
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -fks https://localhost:9200/_plugins/_security/health | grep -q '\"status\":\"UP\"'"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -fks https://localhost:9200/_plugins/_security/health | grep -q '\"status\":\"UP\"'"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "curl -fks https://localhost:9200/_plugins/_security/health | grep -q '\"status\":\"UP\"'"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: pd-ssd-cmek
+        resources:
+          requests:
+            storage: 50Gi
