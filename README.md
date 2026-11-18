@@ -63,13 +63,13 @@ flowchart LR
 
 | Component | Replicas | Placement | Storage |
 |---|---|---|---|
-| Indexer cluster-manager | 1 | pool `siem` | 5 Gi `pd-ssd-cmek` |
-| Indexer data (+ ingest) | 1 | pool `siem` | 50 Gi `pd-ssd-cmek` |
+| Indexer cluster-manager | 1, scale out to 3 by `replicas` and `discovery.seed_hosts` | pool `siem` | 5 Gi `pd-ssd-cmek` |
+| Indexer data (+ ingest) | 1, scale out by `replicas` | pool `siem` | 50 Gi `pd-ssd-cmek` |
 | Manager master / worker | 1 / 2, scale out workers | pool `siem` | 10 Gi `pd-ssd-cmek` |
 | Dashboard | 1, stateless | pool `general` | — |
 | GCP collector | 1 | pool `general` | 1 Gi agent identity |
 
-Shards have no replica: the single data node keeps every shard on its persistent disk, so a Spot preemption stops the indexer until the pod is rescheduled, and no data is lost.
+Shards have no replica: the single data node keeps every shard on its persistent disk, so a Spot preemption stops the indexer until the pod is rescheduled, and no data is lost. With more data nodes, raising `cluster.default_number_of_replicas` in [`indexer.yaml`](infrastructure/configs/wazuh/base/indexer.yaml) gives new indices a replica on another node.
 
 ## Keyless Google Cloud access
 
