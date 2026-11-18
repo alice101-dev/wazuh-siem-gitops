@@ -39,7 +39,7 @@ node_pools = {
     tags           = ["staging-siem-node"]
   }
   "siem" = {
-    machine_type   = "e2-standard-4"
+    machine_type   = "e2-highmem-2"
     min_node_count = 1
     max_node_count = 3
     spot           = true

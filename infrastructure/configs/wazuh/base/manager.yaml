@@ -208,7 +208,7 @@ spec:
         - name: wazuh-manager
           image: wazuh/wazuh-manager
           resources:
-            requests: { cpu: 500m, memory: 1Gi }
+            requests: { cpu: 250m, memory: 1Gi }
             limits: { memory: 2Gi }
           env:
             - name: WAZUH_INDEXER_HOSTS
@@ -416,7 +416,7 @@ spec:
         - name: wazuh-manager
           image: wazuh/wazuh-manager
           resources:
-            requests: { cpu: 500m, memory: 1Gi }
+            requests: { cpu: 250m, memory: 1Gi }
             limits: { memory: 2Gi }
           env:
             - name: WAZUH_INDEXER_HOSTS

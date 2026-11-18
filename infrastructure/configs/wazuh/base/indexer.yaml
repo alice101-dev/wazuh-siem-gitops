@@ -183,8 +183,8 @@ spec:
         - name: wazuh-indexer
           image: wazuh/wazuh-indexer
           resources:
-            requests: { cpu: "250m", memory: 2Gi }
-            limits: { memory: 2Gi }
+            requests: { cpu: "250m", memory: 1536Mi }
+            limits: { memory: 1536Mi }
           env:
             - name: POD_NAME
               valueFrom:
@@ -393,8 +393,8 @@ spec:
         - name: wazuh-indexer
           image: wazuh/wazuh-indexer
           resources:
-            requests: { cpu: "1", memory: 6Gi }
-            limits: { memory: 6Gi }
+            requests: { cpu: "500m", memory: 4Gi }
+            limits: { memory: 4Gi }
           env:
             - name: POD_NAME
               valueFrom:

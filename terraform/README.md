@@ -83,7 +83,7 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
 | Pool | Machine | Nodes | Spot | Taint | Runs |
 |---|---|---|---|---|---|
 | `staging-general` | e2-standard-2 | 1–3 | yes | — | Argo CD, controllers, Wazuh dashboard, GCP collector |
-| `staging-siem` | e2-standard-4 | 1–3 | yes | `workload=siem:NoSchedule` | Wazuh indexer and manager |
+| `staging-siem` | e2-highmem-2 | 1–3 | yes | `workload=siem:NoSchedule` | Wazuh indexer and manager |
 
 - The `staging-siem` pool sets `vm.max_map_count=262144` through the GKE node system config, as the
   indexer (OpenSearch) requires, so no workload needs a privileged container to change it.
