@@ -51,19 +51,19 @@
         "actions": [
           {
             "name": "Slack",
-            "destination_id": "default_slack_channel",
-            "throttle_enabled": true,
-            "throttle": {
-              "value": 60,
-              "unit": "MINUTES"
-            },
+            "destination_id": "wazuh-slack",
             "subject_template": {
               "source": "Wazuh GCP log pipeline stalled",
               "lang": "mustache"
             },
             "message_template": {
-              "source": ":rotating_light: *No GCP audit events reached Wazuh in the last 15 minutes*\nCheck the wazuh-gcp-collector pod, the Pub/Sub subscription backlog and the manager.\nChecked: {{ctx.periodEnd}}",
+              "source": "{\"attachments\": [{\"color\": \"#FF1744\", \"mrkdwn_in\": [\"text\"], \"text\": \":rotating_light: *No GCP audit events reached Wazuh in the last 15 minutes*\\nCheck the wazuh-gcp-collector pod, the Pub/Sub subscription backlog and the manager.\\nChecked: {{ctx.periodEnd}}\"}]}",
               "lang": "mustache"
+            },
+            "throttle_enabled": true,
+            "throttle": {
+              "value": 60,
+              "unit": "MINUTES"
             }
           }
         ]

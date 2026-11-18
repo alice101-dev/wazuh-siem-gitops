@@ -63,12 +63,21 @@ spec:
                 sleep 15
               done
               if [ -s /slack/url ]; then
-                printf '{"config":{"name":"Slack Channel","description":"Wazuh findings of level medium or higher","config_type":"slack","is_enabled":true,"slack":{"url":"%s"}}}' "$(cat /slack/url)" |
-                  api -o /dev/null -X PUT --data-binary @- "$indexer/_plugins/_notifications/configs/default_slack_channel"
-                echo "Slack channel enabled"
+                url=$(cat /slack/url); enabled=true
               else
+                url=https://hooks.slack.com/services/UNSET; enabled=false
                 echo "Secret wazuh-slack-webhook has no url yet: the Slack channel stays disabled"
               fi
+              config=$(printf '{"name":"Wazuh Slack","description":"Wazuh alerts as Slack attachments colored by level","config_type":"webhook","is_enabled":%s,"webhook":{"url":"%s","header_params":{"Content-Type":"application/json"},"method":"POST"}}' "$enabled" "$url")
+              if api -o /dev/null "$indexer/_plugins/_notifications/configs/wazuh-slack" 2>/dev/null; then
+                printf '{"config":%s}' "$config" | api -o /dev/null -X PUT --data-binary @- "$indexer/_plugins/_notifications/configs/wazuh-slack"
+              else
+                printf '{"config_id":"wazuh-slack","config":%s}' "$config" | api -o /dev/null -X POST --data-binary @- "$indexer/_plugins/_notifications/configs"
+              fi
+              echo "Notification channel wazuh-slack configured (enabled: $enabled)"
+              printf '{"config":{"name":"Slack Channel","description":"Default Slack notification channel.","config_type":"slack","is_enabled":false,"slack":{"url":"https://hooks.slack.com/services/YOUR_WORKSPACE_ID/YOUR_CHANNEL_ID/YOUR_WEBHOOK_TOKEN"}}}' |
+                api -o /dev/null -X PUT --data-binary @- "$indexer/_plugins/_notifications/configs/default_slack_channel"
+              echo "Default Slack channel reset to its placeholder and disabled"
               for file in /monitor/*.json; do
                 name=$(sed -n 's/^  "name": "\(.*\)",$/\1/p' "$file" | head -1)
                 found=$(api -X POST -d "{\"query\":{\"term\":{\"monitor.name.keyword\":\"$name\"}}}" \

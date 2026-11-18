@@ -34,19 +34,19 @@
         "actions": [
           {
             "name": "Slack",
-            "destination_id": "default_slack_channel",
-            "throttle_enabled": true,
-            "throttle": {
-              "value": 60,
-              "unit": "MINUTES"
-            },
+            "destination_id": "wazuh-slack",
             "subject_template": {
               "source": "Wazuh indexer disk",
               "lang": "mustache"
             },
             "message_template": {
-              "source": ":warning: *A Wazuh indexer node disk is above 75%*\nScale out the data nodes or grow their volumes before the 85% watermark stops shard allocation.\nChecked: {{ctx.periodEnd}}",
+              "source": "{\"attachments\": [{\"color\": \"#FF9800\", \"mrkdwn_in\": [\"text\"], \"text\": \":warning: *A Wazuh indexer node disk is above 75%*\\nScale out the data nodes or grow their volumes before the 85% watermark stops shard allocation.\\nChecked: {{ctx.periodEnd}}\"}]}",
               "lang": "mustache"
+            },
+            "throttle_enabled": true,
+            "throttle": {
+              "value": 60,
+              "unit": "MINUTES"
             }
           }
         ]

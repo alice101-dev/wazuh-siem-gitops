@@ -49,27 +49,99 @@
   "triggers": [
     {
       "document_level_trigger": {
-        "name": "Finding of level medium or higher",
-        "severity": "2",
+        "name": "Finding of level medium",
+        "severity": "3",
         "condition": {
           "script": {
-            "source": "query[name=medium] || query[name=high] || query[name=critical]",
+            "source": "query[name=medium]",
             "lang": "painless"
           }
         },
         "actions": [
           {
-            "name": "Slack",
-            "destination_id": "default_slack_channel",
-            "throttle_enabled": false,
+            "name": "Slack medium",
+            "destination_id": "wazuh-slack",
             "subject_template": {
               "source": "Wazuh finding",
               "lang": "mustache"
             },
             "message_template": {
-              "source": "{{#ctx.alerts}}{{#sample_documents}}:rotating_light: *{{_source.wazuh.rule.title}}*\nLevel: {{_source.wazuh.rule.level}} | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}\nAction: {{_source.event.code}} by {{_source.related.user}}\nProject: {{_source.cloud.project.id}} | Source IP: {{_source.source.ip}}\nMITRE: {{_source.wazuh.rule.mitre.technique.id}} {{_source.wazuh.rule.mitre.technique.name}}\nTime: {{_source.@timestamp}}\n\n{{/sample_documents}}{{/ctx.alerts}}",
+              "source": "{\"attachments\": [{\"color\": \"#F2C744\", \"mrkdwn_in\": [\"text\"], \"text\": \"{{#ctx.alerts}}{{#sample_documents}}:large_yellow_circle: *{{_source.wazuh.rule.title}}*\\nLevel: *medium* | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}\\nAction: {{_source.event.code}} by {{_source.related.user}}\\nProject: {{_source.cloud.project.id}} | Source IP: {{_source.source.ip}}\\nMITRE: {{_source.wazuh.rule.mitre.technique.id}} {{_source.wazuh.rule.mitre.technique.name}}\\nTime: {{_source.@timestamp}}{{/sample_documents}}{{/ctx.alerts}}\"}]}",
               "lang": "mustache"
             },
+            "throttle_enabled": false,
+            "action_execution_policy": {
+              "action_execution_scope": {
+                "per_alert": {
+                  "actionable_alerts": [
+                    "NEW"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "document_level_trigger": {
+        "name": "Finding of level high",
+        "severity": "2",
+        "condition": {
+          "script": {
+            "source": "query[name=high]",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Slack high",
+            "destination_id": "wazuh-slack",
+            "subject_template": {
+              "source": "Wazuh finding",
+              "lang": "mustache"
+            },
+            "message_template": {
+              "source": "{\"attachments\": [{\"color\": \"#C62828\", \"mrkdwn_in\": [\"text\"], \"text\": \"{{#ctx.alerts}}{{#sample_documents}}:red_circle: *{{_source.wazuh.rule.title}}*\\nLevel: *high* | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}\\nAction: {{_source.event.code}} by {{_source.related.user}}\\nProject: {{_source.cloud.project.id}} | Source IP: {{_source.source.ip}}\\nMITRE: {{_source.wazuh.rule.mitre.technique.id}} {{_source.wazuh.rule.mitre.technique.name}}\\nTime: {{_source.@timestamp}}{{/sample_documents}}{{/ctx.alerts}}\"}]}",
+              "lang": "mustache"
+            },
+            "throttle_enabled": false,
+            "action_execution_policy": {
+              "action_execution_scope": {
+                "per_alert": {
+                  "actionable_alerts": [
+                    "NEW"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "document_level_trigger": {
+        "name": "Finding of level critical",
+        "severity": "1",
+        "condition": {
+          "script": {
+            "source": "query[name=critical]",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Slack critical",
+            "destination_id": "wazuh-slack",
+            "subject_template": {
+              "source": "Wazuh finding",
+              "lang": "mustache"
+            },
+            "message_template": {
+              "source": "{\"attachments\": [{\"color\": \"#FF1744\", \"mrkdwn_in\": [\"text\"], \"text\": \"{{#ctx.alerts}}{{#sample_documents}}:rotating_light: *{{_source.wazuh.rule.title}}*\\nLevel: *critical* | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}\\nAction: {{_source.event.code}} by {{_source.related.user}}\\nProject: {{_source.cloud.project.id}} | Source IP: {{_source.source.ip}}\\nMITRE: {{_source.wazuh.rule.mitre.technique.id}} {{_source.wazuh.rule.mitre.technique.name}}\\nTime: {{_source.@timestamp}}{{/sample_documents}}{{/ctx.alerts}}\"}]}",
+              "lang": "mustache"
+            },
+            "throttle_enabled": false,
             "action_execution_policy": {
               "action_execution_scope": {
                 "per_alert": {
