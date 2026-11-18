@@ -38,7 +38,7 @@ flowchart LR
       eso["External Secrets"]
       cm["cert-manager"]
       collector["GCP collector<br/>Wazuh agent"]
-      dash["dashboard ×2"]
+      dash["dashboard"]
     end
     subgraph siem["pool siem · Spot · tainted"]
       master["manager master"]
@@ -66,7 +66,7 @@ flowchart LR
 | Indexer cluster-manager | 3 | pool `siem` | 5 Gi `pd-ssd-cmek` |
 | Indexer data (+ ingest) | 3, scale out by `replicas` | pool `siem` | 50 Gi `pd-ssd-cmek` |
 | Manager master / worker | 1 / 2, scale out workers | pool `siem` | 10 Gi `pd-ssd-cmek` |
-| Dashboard | 2, stateless | pool `general` | — |
+| Dashboard | 1, stateless | pool `general` | — |
 | GCP collector | 1 | pool `general` | 1 Gi agent identity |
 
 Every shard has one replica on another data node, so the indexer survives the loss of one Spot node.
