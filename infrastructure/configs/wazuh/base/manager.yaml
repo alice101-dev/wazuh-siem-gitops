@@ -286,7 +286,7 @@ kind: StatefulSet
 metadata:
   name: wazuh-manager-worker
 spec:
-  replicas: 2
+  replicas: 1
   serviceName: wazuh-cluster
   podManagementPolicy: Parallel
   persistentVolumeClaimRetentionPolicy:

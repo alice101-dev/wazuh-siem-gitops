@@ -42,7 +42,7 @@ flowchart LR
     end
     subgraph siem["pool siem · Spot · tainted"]
       master["manager master"]
-      workers["manager workers ×2"]
+      workers["manager worker"]
       icm["indexer cluster-manager"]
       idata["indexer data"]
     end
@@ -65,7 +65,7 @@ flowchart LR
 |---|---|---|---|
 | Indexer cluster-manager | 1, scale out to 3 by `replicas` and `discovery.seed_hosts` | pool `siem` | 5 Gi `pd-ssd-cmek` |
 | Indexer data (+ ingest) | 1, scale out by `replicas` | pool `siem` | 50 Gi `pd-ssd-cmek` |
-| Manager master / worker | 1 / 2, scale out workers | pool `siem` | 10 Gi `pd-ssd-cmek` |
+| Manager master / worker | 1 / 1, scale out workers by `replicas` | pool `siem` | 10 Gi `pd-ssd-cmek` |
 | Dashboard | 1, stateless | pool `general` | — |
 | GCP collector | 1 | pool `general` | 1 Gi agent identity |
 
