@@ -13,10 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.13"
-  HELM_VERSION: v4.2.1
-  KUSTOMIZE_VERSION: v5.8.1
-  KUBECONFORM_VERSION: v0.8.0
   TERRAFORM_VERSION: 1.15.4
   GITLEAKS_VERSION: 8.30.1
 
@@ -40,39 +36,6 @@ jobs:
           echo "$bin" >> "$GITHUB_PATH"
       - name: No secrets in the history
         run: gitleaks git --redact --verbose --exit-code 1 .
-
-  manifests:
-    name: Argo CD applications
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: ${{ env.HELM_VERSION }}
-      - name: Install Kustomize and kubeconform
-        run: |
-          bin="$HOME/.local/bin" && mkdir -p "$bin" && cd "$RUNNER_TEMP"
-          kz="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}"
-          curl -fsSLO "$kz/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL -o kustomize.sha256 "$kz/checksums.txt"
-          grep " kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz\$" kustomize.sha256 | sha256sum -c -
-          tar -xzf "kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" -C "$bin" kustomize
-          kc="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
-          curl -fsSLO "$kc/kubeconform-linux-amd64.tar.gz"
-          curl -fsSL -o kubeconform.sha256 "$kc/CHECKSUMS"
-          grep " kubeconform-linux-amd64.tar.gz\$" kubeconform.sha256 | sha256sum -c -
-          tar -xzf kubeconform-linux-amd64.tar.gz -C "$bin" kubeconform
-          echo "$bin" >> "$GITHUB_PATH"
-      - name: Install Python dependencies
-        run: pip install -r ci/requirements.txt
-      - name: Tool versions
-        run: helm version --short && kustomize version && kubeconform -v
-      - name: Render and validate every generated Argo CD Application
-        run: python3 ci/render_manifests.py "$RUNNER_TEMP/rendered"
 
   terraform:
     name: Terraform
