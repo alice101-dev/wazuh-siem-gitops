@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TFVARS_GKE="$ROOT/environments/$ENV/kubernetes-engine/$ENV.tfvars"
 
 CONTROLLERS_ORDER=(external-secrets cert-manager)
-DESTROY_ORDER=(argocd-bootstrap audit-logs log-router pubsub service-accounts cloud-storage artifact-registry kubernetes-engine firewall cloud-nat vpc)
+DESTROY_ORDER=(argocd-bootstrap audit-logs log-router pubsub cloud-storage artifact-registry kubernetes-engine firewall cloud-nat vpc)
 
 tfvar() { sed -nE "s/^$1 *= *\"([^\"]+)\".*/\1/p" "$TFVARS_GKE"; }
 

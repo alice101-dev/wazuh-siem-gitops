@@ -8,12 +8,11 @@ resource, sink or IAM binding reaches a folder, the organization or another proj
 ```text
 terraform/
 ├── .terraform-version          # 1.15.4 (tfenv)
-├── Makefile                    # init / validate / plan / apply / apply-all / teardown / collector-key / check-leaks
+├── Makefile                    # init / validate / plan / apply / apply-all / teardown / check-leaks
 ├── scripts/                    # converge.sh (wait for Argo CD), teardown.sh (ordered deletion, then destroy)
 ├── modules/
 │   ├── services/  kms/  vpc/  cloud-nat/  firewall/  artifact-registry/  cloud-storage/  secret-manager/
 │   ├── kubernetes-engine/      # GKE Standard, private nodes, Dataplane V2, Workload Identity, CMEK, Spot pools
-│   ├── service-accounts/       # Google service accounts, roles granted on the resources they use
 │   ├── pubsub/                 # topics, pull subscriptions, dead-letter topics
 │   ├── logging-sink/           # project log sinks to Pub/Sub or Cloud Storage, writer identity grants
 │   ├── audit-config/           # Data Access audit logs per service
@@ -27,12 +26,11 @@ terraform/
     ├── kubernetes-engine/      #  6. staging-siem (zonal): Spot pools general and siem
     ├── artifact-registry/      #  7. staging-siem (Docker, immutable tags) for images built in this repository
     ├── cloud-storage/          #  8. <project>-staging-siem-log-archive (raw copy of the security logs)
-    ├── service-accounts/       #  9. staging-siem-gcp-collector
-    ├── pubsub/                 # 10. staging-siem-gcp-logs → subscription staging-siem-wazuh (+ dead letter)
-    ├── log-router/             # 11. sinks staging-siem-wazuh (Pub/Sub) and staging-siem-archive (Cloud Storage)
-    ├── audit-logs/             # 12. Data Access audit logs for IAM (incl. service account credentials), Secret Manager, Cloud KMS
-    ├── secret-manager/         # 13. staging-siem-slack-webhook, staging-siem-gcp-collector-key (read by External Secrets)
-    └── argocd-bootstrap/       # 14. Argo CD + bootstrap/root.yaml → everything else is GitOps
+    ├── pubsub/                 #  9. staging-siem-gcp-logs → subscription staging-siem-wazuh (+ dead letter)
+    ├── log-router/             # 10. sinks staging-siem-wazuh (Pub/Sub) and staging-siem-archive (Cloud Storage)
+    ├── audit-logs/             # 11. Data Access audit logs for IAM (incl. service account credentials), Secret Manager, Cloud KMS
+    ├── secret-manager/         # 12. staging-siem-slack-webhook (read by External Secrets)
+    └── argocd-bootstrap/       # 13. Argo CD + bootstrap/root.yaml → everything else is GitOps
 ```
 
 Providers: `hashicorp/google ~> 7.35.0`, `hashicorp/helm ~> 3.1.0`.
@@ -56,11 +54,12 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
   into the topic.
 - Messages are stored only in `asia-southeast2` (topic message storage policy) and kept 7 days in the
   subscription. After 10 failed deliveries a message moves to `staging-siem-wazuh-dead-letter`.
-- The collector service account has `roles/pubsub.subscriber` on the subscription only. Its JSON key is
-  created by `make collector-key`, which writes it straight to the Secret Manager secret
-  `staging-siem-gcp-collector-key` through a 0600 temporary file; the key is never in Terraform state or Git.
-  The subscription also accepts Kubernetes ServiceAccounts through Workload Identity (`workload_identity`
-  in [`pubsub/staging.tfvars`](environments/staging/pubsub/staging.tfvars)).
+- The only reader of the subscription is the Kubernetes ServiceAccount `wazuh/wazuh-gcp-collector`, through
+  Workload Identity: `roles/pubsub.subscriber` is granted on the subscription to
+  `principal://…/subject/ns/wazuh/sa/wazuh-gcp-collector` (`workload_identity` in
+  [`pubsub/staging.tfvars`](environments/staging/pubsub/staging.tfvars)). There is no Google service
+  account and no key. The Pub/Sub service agent holds the subscriber role as well, to move messages to
+  the dead-letter topic.
 
 ## Encryption (Cloud KMS)
 
@@ -147,7 +146,6 @@ make init                                  # all workspaces
 make plan WS=kubernetes-engine
 make apply WS=kubernetes-engine            # staging auto-approves
 make apply-all                             # every workspace in order, then wait for Argo CD
-make collector-key                         # new collector key → Secret Manager (then delete the old key)
 gcloud secrets versions add staging-siem-slack-webhook --data-file=-   # paste the Slack webhook URL
 make check-leaks                           # fail if the project ID or number is in a file Git tracks
 make teardown                              # Argo CD workloads and PVCs first, then terraform destroy

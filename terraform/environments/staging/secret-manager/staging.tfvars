@@ -8,9 +8,4 @@ secrets = {
       { namespace = "external-secrets", service_account = "external-secrets", role = "roles/secretmanager.secretAccessor" },
     ]
   }
-  "siem-gcp-collector-key" = {
-    workload_identity = [
-      { namespace = "external-secrets", service_account = "external-secrets", role = "roles/secretmanager.secretAccessor" },
-    ]
-  }
 }

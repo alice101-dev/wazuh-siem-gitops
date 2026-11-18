@@ -3,7 +3,7 @@
 ENV ?= staging
 WS  ?=
 AUTO_APPROVE ?= $(if $(filter staging,$(ENV)),1,0)
-APPLY_ORDER := services kms vpc cloud-nat firewall kubernetes-engine artifact-registry cloud-storage service-accounts pubsub log-router audit-logs secret-manager argocd-bootstrap
+APPLY_ORDER := services kms vpc cloud-nat firewall kubernetes-engine artifact-registry cloud-storage pubsub log-router audit-logs secret-manager argocd-bootstrap
 
 ifeq ($(strip $(GITOPS_REPO_URL)),)
 GITOPS_REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed -E 's|^git@([^:]+):|https://\1/|')
@@ -15,7 +15,7 @@ export TF_VAR_gitops_repo_url := $(GITOPS_REPO_URL)
 TF_APPROVE := $(if $(filter 1,$(AUTO_APPROVE)),-auto-approve,)
 WS_DIR      = environments/$(ENV)/$(1)
 
-.PHONY: check-project init validate plan apply apply-all converge teardown collector-key check-leaks
+.PHONY: check-project init validate plan apply apply-all converge teardown check-leaks
 
 check-project:
 	@test -n "$(PROJECT_ID)" || { echo "ERROR: PROJECT_ID is empty — run: cp ../.env.example ../.env and set PROJECT_ID"; exit 1; }
@@ -56,13 +56,6 @@ converge: check-project
 teardown: check-project
 	ENV=$(ENV) PROJECT_ID=$(PROJECT_ID) AUTO_APPROVE=$(AUTO_APPROVE) ./scripts/teardown.sh
 
-collector-key: check-project
-	@sa="$(ENV)-siem-gcp-collector@$(PROJECT_ID).iam.gserviceaccount.com"; \
-	tmp="$$(mktemp)"; trap 'rm -f "$$tmp"' EXIT; \
-	gcloud iam service-accounts keys create "$$tmp" --iam-account="$$sa" --project $(PROJECT_ID) --quiet && \
-	gcloud secrets versions add $(ENV)-siem-gcp-collector-key --data-file="$$tmp" --project $(PROJECT_ID) && \
-	echo "Keys of $$sa (delete the old one once the collector uses the new version):" && \
-	gcloud iam service-accounts keys list --iam-account="$$sa" --managed-by=user --project $(PROJECT_ID)
 
 check-leaks: check-project
 	@number="$$(gcloud projects describe $(PROJECT_ID) --format='value(projectNumber)')"; \
