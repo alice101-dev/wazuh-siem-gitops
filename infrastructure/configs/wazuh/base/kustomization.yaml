@@ -10,6 +10,7 @@ resources:
   - dashboard.yaml
   - collector.yaml
   - content-setup.yaml
+  - alerting-setup.yaml
 configMapGenerator:
   - name: wazuh-manager-config
     files:
@@ -17,6 +18,9 @@ configMapGenerator:
   - name: wazuh-gcp-collector-config
     files:
       - collector/ossec.conf
+  - name: wazuh-alerting-monitor
+    files:
+      - alerting/findings-monitor.json
 images:
   - name: wazuh/wazuh-indexer
     newTag: 5.0.0-rc2

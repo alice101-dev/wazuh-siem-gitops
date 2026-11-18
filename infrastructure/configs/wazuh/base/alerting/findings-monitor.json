@@ -1,0 +1,87 @@
+{
+  "type": "monitor",
+  "monitor_type": "doc_level_monitor",
+  "name": "Wazuh findings to Slack",
+  "enabled": true,
+  "schedule": {
+    "period": {
+      "interval": 1,
+      "unit": "MINUTES"
+    }
+  },
+  "inputs": [
+    {
+      "doc_level_input": {
+        "description": "Findings of level medium or higher in every category",
+        "indices": [
+          "wazuh-findings-v5-access-management",
+          "wazuh-findings-v5-applications",
+          "wazuh-findings-v5-cloud-services",
+          "wazuh-findings-v5-network-activity",
+          "wazuh-findings-v5-other",
+          "wazuh-findings-v5-security",
+          "wazuh-findings-v5-system-activity",
+          "wazuh-findings-v5-unclassified"
+        ],
+        "queries": [
+          {
+            "id": "medium",
+            "name": "medium",
+            "query": "wazuh.rule.level:\"medium\"",
+            "tags": []
+          },
+          {
+            "id": "high",
+            "name": "high",
+            "query": "wazuh.rule.level:\"high\"",
+            "tags": []
+          },
+          {
+            "id": "critical",
+            "name": "critical",
+            "query": "wazuh.rule.level:\"critical\"",
+            "tags": []
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "document_level_trigger": {
+        "name": "Finding of level medium or higher",
+        "severity": "2",
+        "condition": {
+          "script": {
+            "source": "query[name=medium] || query[name=high] || query[name=critical]",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Slack",
+            "destination_id": "default_slack_channel",
+            "throttle_enabled": false,
+            "subject_template": {
+              "source": "Wazuh finding",
+              "lang": "mustache"
+            },
+            "message_template": {
+              "source": "{{#ctx.alerts}}{{#sample_documents}}:rotating_light: *{{_source.wazuh.rule.title}}*\nLevel: {{_source.wazuh.rule.level}} | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}\nAction: {{_source.event.code}} by {{_source.related.user}}\nProject: {{_source.cloud.project.id}} | Source IP: {{_source.source.ip}}\nMITRE: {{_source.wazuh.rule.mitre.technique.id}} {{_source.wazuh.rule.mitre.technique.name}}\nTime: {{_source.@timestamp}}\n\n{{/sample_documents}}{{/ctx.alerts}}",
+              "lang": "mustache"
+            },
+            "action_execution_policy": {
+              "action_execution_scope": {
+                "per_alert": {
+                  "actionable_alerts": [
+                    "NEW"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

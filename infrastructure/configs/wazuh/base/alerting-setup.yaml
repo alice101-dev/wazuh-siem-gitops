@@ -1,0 +1,100 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wazuh-alerting-setup
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: wazuh-content-setup
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: credentials
+          secret:
+            secretName: wazuh-credentials
+            items:
+              - key: indexer.env
+                path: indexer.env
+        - name: ca
+          secret:
+            secretName: wazuh-indexer-node-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: monitor
+          configMap:
+            name: wazuh-alerting-monitor
+        - name: slack
+          secret:
+            secretName: wazuh-slack-webhook
+            optional: true
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+      containers:
+        - name: configure-alerting
+          image: curlimages/curl:8.23.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              indexer=https://wazuh-indexer.wazuh.svc.cluster.local:9200
+              umask 077
+              printf 'user = "admin:%s"\n' "$(sed -n 's/^WAZUH_INDEXER_ADMIN_PASSWORD=//p' /credentials/indexer.env)" > /tmp/curlrc
+              api() { curl -sSf --cacert /ca/ca.crt -K /tmp/curlrc -H "Content-Type: application/json" "$@"; }
+              until api -o /dev/null "$indexer/_plugins/_notifications/configs/default_slack_channel"; do
+                echo "Notifications plugin not ready yet, retrying in 15s"
+                sleep 15
+              done
+              if [ -s /slack/url ]; then
+                printf '{"config":{"name":"Slack Channel","description":"Wazuh findings of level medium or higher","config_type":"slack","is_enabled":true,"slack":{"url":"%s"}}}' "$(cat /slack/url)" |
+                  api -o /dev/null -X PUT --data-binary @- "$indexer/_plugins/_notifications/configs/default_slack_channel"
+                echo "Slack channel enabled"
+              else
+                echo "Secret wazuh-slack-webhook has no url yet: the Slack channel stays disabled"
+              fi
+              name=$(sed -n 's/^  "name": "\(.*\)",$/\1/p' /monitor/findings-monitor.json | head -1)
+              found=$(api -X POST -d "{\"query\":{\"term\":{\"monitor.name.keyword\":\"$name\"}}}" \
+                "$indexer/_plugins/_alerting/monitors/_search?filter_path=hits.hits._id")
+              count=$(printf '%s' "$found" | grep -o '"_id"' | wc -l)
+              if [ "$count" -eq 0 ]; then
+                api -o /dev/null -X POST --data-binary @/monitor/findings-monitor.json "$indexer/_plugins/_alerting/monitors"
+                echo "Monitor '$name' created"
+              elif [ "$count" -eq 1 ]; then
+                id=$(printf '%s' "$found" | sed -nE 's/.*"_id":"([^"]+)".*/\1/p')
+                api -o /dev/null -X PUT --data-binary @/monitor/findings-monitor.json "$indexer/_plugins/_alerting/monitors/$id"
+                echo "Monitor '$name' ($id) updated"
+              else
+                echo "More than one monitor is named '$name'; remove the duplicates"
+                exit 1
+              fi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: credentials, mountPath: /credentials, readOnly: true }
+            - { name: ca, mountPath: /ca, readOnly: true }
+            - { name: monitor, mountPath: /monitor, readOnly: true }
+            - { name: slack, mountPath: /slack, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
