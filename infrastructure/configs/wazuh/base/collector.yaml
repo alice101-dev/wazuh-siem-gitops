@@ -213,7 +213,7 @@ spec:
             requests: { cpu: 10m, memory: 32Mi }
             limits: { memory: 128Mi }
           volumeMounts:
-            - { name: data, mountPath: /pvc-etc }
+            - { name: data, mountPath: /pvc-etc, subPath: etc }
             - { name: config-template, mountPath: /config-template, readOnly: true }
             - { name: config, mountPath: /config }
             - { name: enrollment, mountPath: /enrollment, readOnly: true }
@@ -228,7 +228,7 @@ spec:
             requests: { cpu: 50m, memory: 256Mi }
             limits: { memory: 512Mi }
           volumeMounts:
-            - { name: data, mountPath: /var/ossec/etc }
+            - { name: data, mountPath: /var/ossec/etc, subPath: etc }
             - { name: config, mountPath: /wazuh-config-mount, readOnly: true }
             - { name: gcp-credentials, mountPath: /etc/wazuh-gcp, readOnly: true }
   volumeClaimTemplates:
