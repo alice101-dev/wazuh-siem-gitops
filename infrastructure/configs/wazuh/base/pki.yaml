@@ -2,6 +2,8 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: wazuh-selfsigned
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   selfSigned: {}
 ---
@@ -9,6 +11,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-root-ca
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   isCA: true
   commonName: Wazuh Root CA
@@ -31,6 +35,8 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: wazuh-ca
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   ca:
     secretName: wazuh-root-ca
@@ -39,6 +45,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-indexer-node
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   commonName: indexer
   subject:
@@ -69,6 +77,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-indexer-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   commonName: admin
   subject:
@@ -91,6 +101,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-manager
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   commonName: manager
   subject:
@@ -113,6 +125,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-manager-remoted
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   commonName: wazuh-agents
   subject:
@@ -139,6 +153,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-manager-apid
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   commonName: wazuh-api
   subject:
@@ -166,6 +182,8 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wazuh-dashboard
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   commonName: wazuh-dashboard
   subject:
