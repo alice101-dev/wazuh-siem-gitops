@@ -49,7 +49,6 @@ spec:
             - target:
                 group: storage.k8s.io
                 kind: StorageClass
-                name: pd-ssd-cmek
               patch: |-
                 - op: replace
                   path: /parameters/disk-encryption-kms-key
