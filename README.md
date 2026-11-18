@@ -105,12 +105,12 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 
 | Monitor | Fires when | Slack color |
 |---|---|---|
-| Wazuh findings to Slack | a new finding of level medium, high or critical | yellow, red, bright red |
+| Wazuh findings to Slack | a new finding of level high or critical | red, bright red |
 | Wazuh indexer health | the indexer cluster is not green | orange |
 | Wazuh indexer disk | a node disk is above 75% | orange |
 | Wazuh GCP log pipeline stalled | no GCP event is indexed for 15 minutes | bright red |
 
-A Google Cloud API call reaches Slack in about three minutes. Findings of level low stay in the dashboard.
+A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
 
 ## Repository layout
 

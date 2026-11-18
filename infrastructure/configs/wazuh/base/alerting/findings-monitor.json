@@ -12,7 +12,7 @@
   "inputs": [
     {
       "doc_level_input": {
-        "description": "Findings of level medium or higher in every category",
+        "description": "Findings of level high or critical in every category",
         "indices": [
           "wazuh-findings-v5-access-management",
           "wazuh-findings-v5-applications",
@@ -24,12 +24,6 @@
           "wazuh-findings-v5-unclassified"
         ],
         "queries": [
-          {
-            "id": "medium",
-            "name": "medium",
-            "query": "wazuh.rule.level:\"medium\"",
-            "tags": []
-          },
           {
             "id": "high",
             "name": "high",
@@ -47,42 +41,6 @@
     }
   ],
   "triggers": [
-    {
-      "document_level_trigger": {
-        "name": "Finding of level medium",
-        "severity": "3",
-        "condition": {
-          "script": {
-            "source": "query[name=medium]",
-            "lang": "painless"
-          }
-        },
-        "actions": [
-          {
-            "name": "Slack medium",
-            "destination_id": "wazuh-slack",
-            "subject_template": {
-              "source": "Wazuh finding",
-              "lang": "mustache"
-            },
-            "message_template": {
-              "source": "{\"attachments\": [{\"color\": \"#F2C744\", \"mrkdwn_in\": [\"text\"], \"text\": \"{{#ctx.alerts}}{{#sample_documents}}:large_yellow_circle: *{{_source.wazuh.rule.title}}*\\nLevel: *medium* | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}\\nAction: `{{_source.event.code}}` by `{{_source.user.name}}`\\nProject: `{{_source.cloud.project.id}}` | Source IP: `{{_source.source.ip}}`\\nMITRE: {{_source.wazuh.rule.mitre.technique.id.0}} {{_source.wazuh.rule.mitre.technique.name.0}}\\nTime: {{_source.@timestamp}}{{^ctx.alerts}}{{_source.wazuh.rule.mitre.technique.id}}{{_source.wazuh.rule.mitre.technique.name}}{{/ctx.alerts}}{{/sample_documents}}{{/ctx.alerts}}\"}]}",
-              "lang": "mustache"
-            },
-            "throttle_enabled": false,
-            "action_execution_policy": {
-              "action_execution_scope": {
-                "per_alert": {
-                  "actionable_alerts": [
-                    "NEW"
-                  ]
-                }
-              }
-            }
-          }
-        ]
-      }
-    },
     {
       "document_level_trigger": {
         "name": "Finding of level high",
