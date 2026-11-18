@@ -21,6 +21,9 @@ configMapGenerator:
   - name: wazuh-alerting-monitor
     files:
       - alerting/findings-monitor.json
+      - alerting/cluster-health-monitor.json
+      - alerting/disk-usage-monitor.json
+      - alerting/pipeline-freshness-monitor.json
 images:
   - name: wazuh/wazuh-indexer
     newTag: 5.0.0-rc2

@@ -69,21 +69,23 @@ spec:
               else
                 echo "Secret wazuh-slack-webhook has no url yet: the Slack channel stays disabled"
               fi
-              name=$(sed -n 's/^  "name": "\(.*\)",$/\1/p' /monitor/findings-monitor.json | head -1)
-              found=$(api -X POST -d "{\"query\":{\"term\":{\"monitor.name.keyword\":\"$name\"}}}" \
-                "$indexer/_plugins/_alerting/monitors/_search?filter_path=hits.hits._id")
-              count=$(printf '%s' "$found" | grep -o '"_id"' | wc -l)
-              if [ "$count" -eq 0 ]; then
-                api -o /dev/null -X POST --data-binary @/monitor/findings-monitor.json "$indexer/_plugins/_alerting/monitors"
-                echo "Monitor '$name' created"
-              elif [ "$count" -eq 1 ]; then
-                id=$(printf '%s' "$found" | sed -nE 's/.*"_id":"([^"]+)".*/\1/p')
-                api -o /dev/null -X PUT --data-binary @/monitor/findings-monitor.json "$indexer/_plugins/_alerting/monitors/$id"
-                echo "Monitor '$name' ($id) updated"
-              else
-                echo "More than one monitor is named '$name'; remove the duplicates"
-                exit 1
-              fi
+              for file in /monitor/*.json; do
+                name=$(sed -n 's/^  "name": "\(.*\)",$/\1/p' "$file" | head -1)
+                found=$(api -X POST -d "{\"query\":{\"term\":{\"monitor.name.keyword\":\"$name\"}}}" \
+                  "$indexer/_plugins/_alerting/monitors/_search?filter_path=hits.hits._id")
+                count=$(printf '%s' "$found" | grep -o '"_id"' | wc -l)
+                if [ "$count" -eq 0 ]; then
+                  api -o /dev/null -X POST --data-binary @"$file" "$indexer/_plugins/_alerting/monitors"
+                  echo "Monitor '$name' created"
+                elif [ "$count" -eq 1 ]; then
+                  id=$(printf '%s' "$found" | sed -nE 's/.*"_id":"([^"]+)".*/\1/p')
+                  api -o /dev/null -X PUT --data-binary @"$file" "$indexer/_plugins/_alerting/monitors/$id"
+                  echo "Monitor '$name' ($id) updated"
+                else
+                  echo "More than one monitor is named '$name'; remove the duplicates"
+                  exit 1
+                fi
+              done
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

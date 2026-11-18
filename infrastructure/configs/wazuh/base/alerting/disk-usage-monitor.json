@@ -1,0 +1,56 @@
+{
+  "type": "monitor",
+  "monitor_type": "cluster_metrics_monitor",
+  "name": "Wazuh indexer disk",
+  "enabled": true,
+  "schedule": {
+    "period": {
+      "interval": 5,
+      "unit": "MINUTES"
+    }
+  },
+  "inputs": [
+    {
+      "uri": {
+        "api_type": "NODES_STATS",
+        "path": "_nodes/stats",
+        "path_params": "",
+        "url": "http://localhost:9200/_nodes/stats",
+        "clusters": []
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "query_level_trigger": {
+        "name": "An indexer node disk is above 75%",
+        "severity": "1",
+        "condition": {
+          "script": {
+            "source": "for (def n : ctx.results[0].nodes.values()) { if (n.fs != null && n.fs.total.total_in_bytes > 0) { double used = 1.0 - ((double) n.fs.total.available_in_bytes / n.fs.total.total_in_bytes); if (used > 0.75) { return true; } } } return false;",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Slack",
+            "destination_id": "default_slack_channel",
+            "throttle_enabled": true,
+            "throttle": {
+              "value": 60,
+              "unit": "MINUTES"
+            },
+            "subject_template": {
+              "source": "Wazuh indexer disk",
+              "lang": "mustache"
+            },
+            "message_template": {
+              "source": ":warning: *A Wazuh indexer node disk is above 75%*\nScale out the data nodes or grow their volumes before the 85% watermark stops shard allocation.\nChecked: {{ctx.periodEnd}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
