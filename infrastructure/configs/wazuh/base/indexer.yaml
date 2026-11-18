@@ -183,8 +183,8 @@ spec:
         - name: wazuh-indexer
           image: wazuh/wazuh-indexer
           resources:
-            requests: { cpu: "250m", memory: 1Gi }
-            limits: { memory: 1Gi }
+            requests: { cpu: "250m", memory: 2Gi }
+            limits: { memory: 2Gi }
           env:
             - name: POD_NAME
               valueFrom:
@@ -253,7 +253,9 @@ spec:
             timeoutSeconds: 10
             failureThreshold: 5
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
@@ -391,8 +393,8 @@ spec:
         - name: wazuh-indexer
           image: wazuh/wazuh-indexer
           resources:
-            requests: { cpu: "1", memory: 4Gi }
-            limits: { memory: 4Gi }
+            requests: { cpu: "1", memory: 6Gi }
+            limits: { memory: 6Gi }
           env:
             - name: POD_NAME
               valueFrom:
@@ -459,7 +461,9 @@ spec:
             timeoutSeconds: 10
             failureThreshold: 5
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]

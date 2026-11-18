@@ -270,7 +270,9 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 5
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
@@ -477,7 +479,9 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 5
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
