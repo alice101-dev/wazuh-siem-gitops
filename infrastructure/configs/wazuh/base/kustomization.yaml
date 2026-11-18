@@ -9,6 +9,7 @@ resources:
   - manager.yaml
   - dashboard.yaml
   - collector.yaml
+  - content-setup.yaml
 configMapGenerator:
   - name: wazuh-manager-config
     files:
