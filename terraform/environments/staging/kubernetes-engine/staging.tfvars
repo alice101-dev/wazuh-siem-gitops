@@ -29,7 +29,7 @@ sa_display_name = "GKE node SA staging-siem"
 
 node_pools = {
   "general" = {
-    machine_type   = "e2-standard-4"
+    machine_type   = "e2-standard-2"
     min_node_count = 1
     max_node_count = 3
     spot           = true
