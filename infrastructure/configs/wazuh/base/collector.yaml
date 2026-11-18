@@ -244,7 +244,7 @@ spec:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: pd-ssd-cmek
+        storageClassName: pd-standard-cmek
         resources:
           requests:
             storage: 1Gi

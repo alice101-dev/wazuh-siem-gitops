@@ -1,11 +1,23 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: pd-ssd-cmek
+  name: pd-balanced-cmek
 provisioner: pd.csi.storage.gke.io
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 reclaimPolicy: Delete
 parameters:
-  type: pd-ssd
+  type: pd-balanced
+  disk-encryption-kms-key: projects/PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-standard-cmek
+provisioner: pd.csi.storage.gke.io
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: pd-standard
   disk-encryption-kms-key: projects/PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY

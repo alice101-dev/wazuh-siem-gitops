@@ -276,7 +276,7 @@ spec:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: pd-ssd-cmek
+        storageClassName: pd-balanced-cmek
         resources:
           requests:
             storage: 10Gi
@@ -485,7 +485,7 @@ spec:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: pd-ssd-cmek
+        storageClassName: pd-balanced-cmek
         resources:
           requests:
             storage: 10Gi
