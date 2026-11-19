@@ -869,16 +869,16 @@
     },
     {
       "title": "GKE secret access denied to a workload service account",
-      "description": "The API server refused a workload service account access to secrets: a compromised pod looking for credentials.",
+      "description": "The API server refused a workload service account access to secrets (GKE records the caller of a denied read only in the error message): a compromised pod looking for credentials.",
       "level": "high",
       "selection": {
         "event.outcome": "failure",
-        "user.name|startswith": "system:serviceaccount:",
         "event.code": [
           "io.k8s.core.v1.secrets.get",
           "io.k8s.core.v1.secrets.list",
           "io.k8s.core.v1.secrets.watch"
-        ]
+        ],
+        "error.message|contains": "User \"system:serviceaccount:"
       },
       "mitre": {
         "tactic": [
