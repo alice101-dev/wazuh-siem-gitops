@@ -99,6 +99,7 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Agent enrollment | Argo CD Sync hook mints an enrollment token through the manager API into a Secret |
 | GCP ruleset | Sync hook enables the `gcp` integration of the standard ruleset through the indexer content manager |
 | Slack and monitors | Sync hook keeps the notification channel and the monitors in [`alerting/`](infrastructure/configs/wazuh/base/alerting) |
+| Kubernetes detections and dashboard | Sync hook reconciles the rules, detector and dashboard in [`k8s-security/`](infrastructure/configs/wazuh/base/k8s-security) |
 | Network | default-deny NetworkPolicies per component, including NodeLocal DNSCache |
 
 ## Alerts
@@ -111,6 +112,40 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Wazuh GCP log pipeline stalled | no GCP event is indexed for 15 minutes | bright red |
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
+
+## Kubernetes security
+
+GKE runs the Kubernetes API server, so its audit log is not a file on a node: GKE writes it to Cloud Audit
+Logs, and the same sink that carries the Google Cloud audit logs brings the Admin Activity entries of
+`k8s.io` (every write to the API) to Wazuh, decoded by the `gcp` integration.
+
+[`k8s-security/rules.json`](infrastructure/configs/wazuh/base/k8s-security/rules.json) holds Sigma rules on
+those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
+promotes them draft → test → custom and points a Ruleset Management detector of the same name at
+`wazuh-events-v5-cloud-services`; a rule removed from the file is deleted. Every rule except the anonymous
+one ignores the GKE system components, the cluster controllers, Argo CD, cert-manager and External Secrets,
+so what reaches Slack is a person or a workload acting on the API:
+
+| Rule | Level |
+|---|---|
+| Exec or attach into a pod | high |
+| Ephemeral container added to a pod (`kubectl debug`) | high |
+| Pod or workload controller created outside GitOps | high |
+| Role or ClusterRole created or changed | high |
+| RoleBinding or ClusterRoleBinding created or changed | high |
+| Service account created in `kube-system` | high |
+| Certificate signing request created | high |
+| Certificate signing request approved | critical |
+| Admission webhook created, changed or deleted | high |
+| Write accepted from an anonymous user | critical |
+
+Admin Activity has no reads and no TokenRequests, and the request body stays in the unindexed
+`event.original`, so listing secrets, `nodes/proxy`, service account tokens and privileged or `hostPath`
+pods are not detected; a pod created outside GitOps is, whatever its spec.
+
+The same hook writes the **GKE Kubernetes security** dashboard: findings by level, rule and time, the
+actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service
+account and certificate operations, and write trends by method and namespace.
 
 ## Repository layout
 

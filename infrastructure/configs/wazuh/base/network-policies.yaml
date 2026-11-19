@@ -45,6 +45,7 @@ spec:
         - podSelector: { matchLabels: { app: wazuh-dashboard } }
         - podSelector: { matchLabels: { app: wazuh-manager } }
         - podSelector: { matchLabels: { app.kubernetes.io/component: wazuh-content-setup } }
+        - podSelector: { matchLabels: { app.kubernetes.io/component: wazuh-k8s-security-setup } }
       ports:
         - { protocol: TCP, port: 9200 }
     - from:
@@ -214,3 +215,37 @@ spec:
         - podSelector: { matchLabels: { app: wazuh-indexer, role: data } }
       ports:
         - { protocol: TCP, port: 9200 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: k8s-security-setup-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: wazuh-k8s-security-setup
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-indexer, role: data } }
+      ports:
+        - { protocol: TCP, port: 9200 }
+    - to:
+        - podSelector: { matchLabels: { app: wazuh-dashboard } }
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dashboard-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-dashboard
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/component: wazuh-k8s-security-setup } }
+      ports:
+        - { protocol: TCP, port: 443 }

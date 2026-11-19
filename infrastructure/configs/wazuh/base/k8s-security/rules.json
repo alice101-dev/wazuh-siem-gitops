@@ -1,0 +1,183 @@
+{
+  "integration": {
+    "title": "gke-kubernetes",
+    "category": "cloud-services",
+    "description": "Detections on the GKE Kubernetes Admin Activity audit log that the gcp integration decodes."
+  },
+  "detector": {
+    "name": "gke-kubernetes",
+    "indices": ["wazuh-events-v5-cloud-services"],
+    "interval_minutes": 1
+  },
+  "trusted": {
+    "trusted_prefix": {
+      "user.name|startswith": [
+        "system:node:",
+        "system:kube-",
+        "system:gke-",
+        "system:gcp-",
+        "system:anet-",
+        "system:pdcsi-",
+        "system:cloud-controller-manager",
+        "system:cluster-autoscaler",
+        "system:serviceaccount:kube-system:",
+        "system:serviceaccount:gke-",
+        "system:serviceaccount:argocd:",
+        "system:serviceaccount:cert-manager:",
+        "system:serviceaccount:external-secrets:"
+      ]
+    },
+    "trusted_robot": {
+      "user.name|endswith": "@container-engine-robot.iam.gserviceaccount.com"
+    },
+    "trusted_bootstrap": {
+      "user.name": "kubelet-nodepool-bootstrap"
+    }
+  },
+  "rules": [
+    {
+      "title": "GKE exec or attach into a pod",
+      "description": "A principal outside the GKE system components, Argo CD and the cluster controllers opened an exec or attach session into a container.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.pods.exec.create",
+          "io.k8s.core.v1.pods.exec.get",
+          "io.k8s.core.v1.pods.attach.create",
+          "io.k8s.core.v1.pods.attach.get"
+        ]
+      },
+      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
+    },
+    {
+      "title": "GKE ephemeral container added to a pod",
+      "description": "An ephemeral (debug) container was injected into a running pod, as kubectl debug does.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.pods.ephemeralcontainers.patch",
+          "io.k8s.core.v1.pods.ephemeralcontainers.update"
+        ]
+      },
+      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
+    },
+    {
+      "title": "GKE workload created outside GitOps",
+      "description": "A pod or workload controller was created directly instead of through Argo CD, for example with kubectl run or kubectl apply.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.pods.create",
+          "io.k8s.apps.v1.deployments.create",
+          "io.k8s.apps.v1.daemonsets.create",
+          "io.k8s.apps.v1.statefulsets.create",
+          "io.k8s.apps.v1.replicasets.create",
+          "io.k8s.batch.v1.jobs.create",
+          "io.k8s.batch.v1.cronjobs.create"
+        ]
+      },
+      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1610", "Deploy Container"] }
+    },
+    {
+      "title": "GKE RBAC role created or changed",
+      "description": "A Role or ClusterRole was created or changed outside GitOps.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.authorization.rbac.v1.clusterroles.create",
+          "io.k8s.authorization.rbac.v1.clusterroles.update",
+          "io.k8s.authorization.rbac.v1.clusterroles.patch",
+          "io.k8s.authorization.rbac.v1.roles.create",
+          "io.k8s.authorization.rbac.v1.roles.update",
+          "io.k8s.authorization.rbac.v1.roles.patch"
+        ]
+      },
+      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1098", "Account Manipulation"] }
+    },
+    {
+      "title": "GKE RBAC binding created or changed",
+      "description": "A RoleBinding or ClusterRoleBinding was created or changed outside GitOps, granting permissions to a subject.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.authorization.rbac.v1.clusterrolebindings.create",
+          "io.k8s.authorization.rbac.v1.clusterrolebindings.update",
+          "io.k8s.authorization.rbac.v1.clusterrolebindings.patch",
+          "io.k8s.authorization.rbac.v1.rolebindings.create",
+          "io.k8s.authorization.rbac.v1.rolebindings.update",
+          "io.k8s.authorization.rbac.v1.rolebindings.patch"
+        ]
+      },
+      "mitre": { "tactic": ["TA0004", "Privilege Escalation"], "technique": ["T1098", "Account Manipulation"] }
+    },
+    {
+      "title": "GKE service account created in kube-system",
+      "description": "A service account was created in the kube-system namespace outside the cluster controllers.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": "io.k8s.core.v1.serviceaccounts.create",
+        "orchestrator.namespace": "kube-system"
+      },
+      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1136", "Create Account"] }
+    },
+    {
+      "title": "GKE certificate signing request created",
+      "description": "A certificate signing request was created outside node bootstrap, a step towards a long-lived client certificate.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": "io.k8s.certificates.v1.certificatesigningrequests.create"
+      },
+      "mitre": { "tactic": ["TA0006", "Credential Access"], "technique": ["T1649", "Steal or Forge Authentication Certificates"] }
+    },
+    {
+      "title": "GKE certificate signing request approved",
+      "description": "A certificate signing request was approved outside the GKE certificate controller, which issues a client certificate trusted by the API server.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.certificates.v1.certificatesigningrequests.approval.update",
+          "io.k8s.certificates.v1.certificatesigningrequests.approval.patch"
+        ]
+      },
+      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1649", "Steal or Forge Authentication Certificates"] }
+    },
+    {
+      "title": "GKE admission webhook changed",
+      "description": "A mutating or validating admission webhook configuration was created, changed or deleted outside GitOps; webhooks can rewrite or let through every object the API server admits.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.admissionregistration.v1.mutatingwebhookconfigurations.create",
+          "io.k8s.admissionregistration.v1.mutatingwebhookconfigurations.update",
+          "io.k8s.admissionregistration.v1.mutatingwebhookconfigurations.patch",
+          "io.k8s.admissionregistration.v1.mutatingwebhookconfigurations.delete",
+          "io.k8s.admissionregistration.v1.validatingwebhookconfigurations.create",
+          "io.k8s.admissionregistration.v1.validatingwebhookconfigurations.update",
+          "io.k8s.admissionregistration.v1.validatingwebhookconfigurations.patch",
+          "io.k8s.admissionregistration.v1.validatingwebhookconfigurations.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+    },
+    {
+      "title": "GKE request by an anonymous user",
+      "description": "The API server accepted a write from an unauthenticated user.",
+      "level": "critical",
+      "trusted": false,
+      "selection": {
+        "event.outcome": "success",
+        "user.name": ["system:anonymous", "system:unauthenticated"]
+      },
+      "mitre": { "tactic": ["TA0001", "Initial Access"], "technique": ["T1078", "Valid Accounts"] }
+    }
+  ]
+}

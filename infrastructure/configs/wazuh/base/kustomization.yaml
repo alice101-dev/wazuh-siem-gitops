@@ -11,7 +11,13 @@ resources:
   - collector.yaml
   - content-setup.yaml
   - alerting-setup.yaml
+  - k8s-security-setup.yaml
 configMapGenerator:
+  - name: wazuh-k8s-security
+    files:
+      - k8s-security/setup.py
+      - k8s-security/rules.json
+      - k8s-security/dashboard.json
   - name: wazuh-manager-config
     files:
       - manager/wazuh-manager.conf
