@@ -366,6 +366,7 @@ customRules:
       desc: mount, umount, nsenter or unshare ran inside a container outside the GKE system and platform workloads, the tools of a container escape.
       condition: >
         spawned_process and container and not wazuh_platform_container
+        and evt.res = SUCCESS
         and proc.name in (mount, umount, nsenter, unshare) and not proc.pname in (mount, umount, nsenter, unshare)
       output: Mount or namespace tool in container (command=%proc.cmdline parent=%proc.pname image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
       priority: CRITICAL
