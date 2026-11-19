@@ -139,7 +139,8 @@ only denied requests, secret reads, `nodes/proxy` and TokenRequests by principal
 system, both out of the `_Default` bucket, so the controllers' reads are not billed, and out of the sinks.
 
 Google Cloud logs a denied read only in the Data Access log, so `ADMIN_READ` is on for every service, and a
-second exclusion drops the successful reads of the services that are not audited for their own sake. The
+second exclusion drops the successful reads of the services that are not audited for their own sake
+(reading an API key string is one that is kept). The
 monitor [`permission-enumeration-monitor.json`](infrastructure/configs/wazuh/base/alerting/permission-enumeration-monitor.json)
 groups the denied requests of the last 5 minutes by principal, or by source IP when the denial carries no
 identity, and alerts when one caller was denied on 4 or more API methods, one alert and one Slack message
@@ -394,6 +395,20 @@ resources (the Google Cloud rules), removed right after.
 | Cluster defences changed | `gcloud container clusters update` (endpoint access, authorized networks, logging, network policy, legacy ABAC) or `delete` | GKE cluster configuration changed | critical |
 | Capacity for crypto mining | `gcloud compute instances create`, `gcloud container node-pools create` / `resize` | GCP compute capacity added | high |
 | Traffic redirected or networks bridged | `gcloud compute routes create`, `routers create`, `networks peerings create`, `subnets update` | GCP VPC routing or peering changed | high |
+| API key | create or change a key on APIs & Services → Credentials, `gcloud services api-keys create` / `update` | GCP API key created or changed | critical |
+| API key stolen | Show key in the console, `gcloud services api-keys get-key-string` | GCP API key string read | high |
+| OAuth app | create an OAuth client ID or consent screen on the Credentials page | GCP OAuth client created or changed | high |
+| SSH through OS Login | `gcloud compute os-login ssh-keys add` | GCP OS Login SSH key added | high |
+| Guardrail removed | change or delete an organization policy, or an IAM deny policy | GCP organization policy changed / GCP IAM deny policy changed | critical |
+| Alarms silenced | delete a Cloud Monitoring alert policy or notification channel, change the essential contacts | GCP alerting or security contacts tampered | high |
+| Disk copied out | `gcloud compute snapshots create`, `images create`, `images add-iam-policy-binding` | GCP disk snapshot or image created or shared | high |
+| Secret access granted | `gcloud secrets add-iam-policy-binding` | GCP secret IAM policy changed | high |
+| Secret replaced or destroyed | `gcloud secrets versions add` / `disable` / `destroy`, `secrets delete` | GCP secret replaced, disabled or destroyed | high |
+| Image repository opened | `gcloud artifacts repositories add-iam-policy-binding` | GCP Artifact Registry IAM policy changed | high |
+| Data shared | change the access or IAM policy of a BigQuery dataset or table | GCP BigQuery access changed | high |
+| VM identity swapped | `gcloud compute instances set-service-account` | GCP VM service account changed | high |
+| Code run outside the cluster | deploy Cloud Run, Cloud Functions, Cloud Build or a Cloud Scheduler job | GCP serverless code or build deployed | high |
+| Name redirected | `gcloud dns managed-zones create`, `record-sets create` / `delete` | GCP DNS changed | high |
 
 ### Across Google Cloud and Kubernetes (monitor)
 
