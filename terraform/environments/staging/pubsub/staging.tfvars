@@ -4,6 +4,7 @@ env    = "staging"
 
 topics = {
   "siem-gcp-logs" = {
+    log_sink_writer              = true
     workload_identity_publishers = [{ namespace = "falco", service_account = "falco-falcosidekick" }]
     subscriptions = {
       "siem-wazuh" = {

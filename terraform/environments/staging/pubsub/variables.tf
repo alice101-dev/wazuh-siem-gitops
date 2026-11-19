@@ -19,9 +19,10 @@ variable "env" {
 }
 
 variable "topics" {
-  description = "Topics keyed by base name (without env prefix), each with pull subscriptions keyed by base name. Subscribers are service accounts from the service-accounts workspace (base account_id) or Kubernetes ServiceAccounts through Workload Identity; workload_identity_publishers are Kubernetes ServiceAccounts that publish to the topic."
+  description = "Topics keyed by base name (without env prefix), each with pull subscriptions keyed by base name. Subscribers are service accounts from the service-accounts workspace (base account_id) or Kubernetes ServiceAccounts through Workload Identity; workload_identity_publishers are Kubernetes ServiceAccounts that publish to the topic; log_sink_writer lets Cloud Logging sinks publish."
   type = map(object({
     message_retention_duration = optional(string)
+    log_sink_writer            = optional(bool, false)
     workload_identity_publishers = optional(list(object({
       namespace       = string
       service_account = string

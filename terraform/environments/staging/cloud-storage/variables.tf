@@ -19,7 +19,7 @@ variable "env" {
 }
 
 variable "buckets" {
-  description = "Buckets keyed by name (without the <project>-<env>- prefix); workload_identity grants roles to Kubernetes ServiceAccounts."
+  description = "Buckets keyed by name (without the <project>-<env>- prefix); workload_identity grants roles to Kubernetes ServiceAccounts; log_sink_writer lets Cloud Logging sinks write objects."
   type = map(object({
     location                      = optional(string)
     storage_class                 = optional(string, "STANDARD")
@@ -27,6 +27,7 @@ variable "buckets" {
     versioning                    = optional(bool, false)
     soft_delete_retention_seconds = optional(number, 604800)
     labels                        = optional(map(string), {})
+    log_sink_writer               = optional(bool, false)
     lifecycle_rules = optional(list(object({
       action   = string
       age_days = number

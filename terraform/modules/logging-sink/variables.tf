@@ -4,7 +4,7 @@ variable "project_id" {
 }
 
 variable "sinks" {
-  description = "Project log sinks keyed by name. destination_name is a Pub/Sub topic name in the same project or a Cloud Storage bucket name; the sink's writer identity gets publish or object-create rights on it."
+  description = "Project log sinks keyed by name. destination_name is a Pub/Sub topic name in the same project or a Cloud Storage bucket name. The writer identity is the project's Cloud Logging service agent; the destination's own workspace grants it publish or object-create rights, so the right outlives the sink and log entries still in flight when the sink is deleted are delivered."
   type = map(object({
     destination_type = string
     destination_name = string
@@ -27,10 +27,4 @@ variable "sinks" {
     condition     = alltrue([for s in values(var.sinks) : trimspace(s.filter) != ""])
     error_message = "Every sink needs a filter; an empty filter would export every log of the project."
   }
-}
-
-variable "writer_identity_propagation" {
-  description = "Wait after a sink is created before granting its writer identity: the Cloud Logging service agent is created with the first sink of a project and Cloud Storage rejects it until it has propagated"
-  type        = string
-  default     = "90s"
 }

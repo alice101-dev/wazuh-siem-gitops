@@ -8,7 +8,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TFVARS_GKE="$ROOT/environments/$ENV/kubernetes-engine/$ENV.tfvars"
 
 CONTROLLERS_ORDER=(external-secrets cert-manager)
-DESTROY_ORDER=(argocd-bootstrap audit-logs log-router pubsub cloud-storage artifact-registry kubernetes-engine firewall cloud-nat vpc)
+# cloud-storage is kept: the log archive outlives the cluster, and Cloud Logging still writes the batch it
+# held when the sinks were deleted, which fails (and emails a sink error) once the bucket is gone.
+DESTROY_ORDER=(argocd-bootstrap audit-logs log-router pubsub artifact-registry kubernetes-engine firewall cloud-nat vpc)
+# Log entries routed just before the sinks are deleted are still published to the topic for a while.
+SINK_DRAIN_SECONDS="${SINK_DRAIN_SECONDS:-300}"
 
 tfvar() { sed -nE "s/^$1 *= *\"([^\"]+)\".*/\1/p" "$TFVARS_GKE"; }
 
@@ -97,6 +101,10 @@ for ws in "${DESTROY_ORDER[@]}"; do
   if [ -f "$dir/terraform.tfstate" ] && [ "$(terraform -chdir="$dir" state list 2>/dev/null | wc -l | tr -d ' ')" != "0" ]; then
     echo "================ destroy $ws ================"
     terraform -chdir="$dir" destroy -var-file="$ENV.tfvars" ${AUTO_APPROVE:+-auto-approve}
+    if [ "$ws" = log-router ]; then
+      echo "   waiting ${SINK_DRAIN_SECONDS}s for log entries still in flight to the Pub/Sub topic"
+      sleep "$SINK_DRAIN_SECONDS"
+    fi
   else
     echo "   $ws: empty state — skipping"
   fi

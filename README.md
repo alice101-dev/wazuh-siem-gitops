@@ -488,7 +488,13 @@ read -rs URL && printf '%s' "$URL" | gcloud secrets versions add staging-siem-sl
 
 kubectl -n wazuh port-forward svc/wazuh-dashboard 8443:443   # https://localhost:8443, user admin
 kubectl -n wazuh get secret wazuh-credentials -o jsonpath='{.data.indexer\.env}' | base64 -d | grep ADMIN
+
+make -C terraform teardown             # everything except APIs, KMS, Secret Manager and the log archive bucket
 ```
+
+The log archive bucket and the Pub/Sub topic grant write access to the project's Cloud Logging service
+agent in their own workspaces, not in `log-router`. Destroying the sinks therefore leaves that access in
+place, so log entries Cloud Logging still holds for the sinks are delivered instead of raising sink errors.
 
 ## Versions
 
