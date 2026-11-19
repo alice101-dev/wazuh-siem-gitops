@@ -30,7 +30,7 @@ service account key exists anywhere: Google Cloud access goes through **GKE Work
 ```mermaid
 flowchart LR
   subgraph gcp["Google Cloud project"]
-    audit["Cloud Audit Logs<br/>firewall logs"]
+    audit["Cloud Audit Logs<br/>firewall and network policy logs"]
     sink["Log Router sinks<br/>(lease renewals excluded)"]
     topic["Pub/Sub topic<br/>asia-southeast2 only"]
     sub["subscription<br/>+ dead letter"]
@@ -124,6 +124,7 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Wazuh indexer disk | a node disk is above 75% | orange |
 | Wazuh GCP log pipeline stalled | no GCP event is indexed for 15 minutes | bright red |
 | Falco runtime detection silent | no Falco canary reaches Wazuh for 30 minutes | bright red |
+| Kubernetes port scan | NetworkPolicies deny one pod 10 or more ports or 10 or more hosts in 5 minutes | bright red |
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
 
@@ -180,6 +181,15 @@ body and tags `privileged`, `host_network`, `host_pid`, `host_ipc`, `host_path`,
 `admin_role_binding` into `wazuh-events-v5-security`, where five rules of its own detector alert on them. A stolen service account
 token cannot be replayed from outside: the DNS endpoint accepts Google IAM credentials only and the IP
 endpoint only the node subnet.
+
+GKE Dataplane V2 logs every connection a NetworkPolicy denies
+([`network-logging.yaml`](infrastructure/configs/namespaces/base/network-logging.yaml)); allowed
+connections are not logged. The `policy-action` log goes through the same sinks, and the `gke-network-policy`
+decoder ([`gke-network-policy.json`](infrastructure/configs/wazuh/base/k8s-security/gke-network-policy.json))
+writes the source pod, the destination pod, IP and port into `wazuh-events-v5-network-activity`. A medium
+rule marks a denied connection from another namespace into a security namespace, and the monitor
+[`port-scan-monitor.json`](infrastructure/configs/wazuh/base/alerting/port-scan-monitor.json) groups the
+denials of the last 5 minutes by source pod and alerts when one pod reached 10 or more ports or hosts.
 
 The same hook writes the **GKE Kubernetes security** dashboard: findings by level, rule and time, the
 actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service
@@ -319,6 +329,13 @@ resources (the Google Cloud rules), removed right after.
 | Execution from shared memory | run a binary copied to `/dev/shm` | Execution from /dev/shm | high |
 | Kernel module | `insmod`, `modprobe` from a privileged pod | Linux Kernel Module Injection Detected | critical |
 
+### Network (GKE network policy log, `gke-network-policy`)
+
+| Technique | How to try it | Alert | Level |
+|---|---|---|---|
+| Port scan of the SIEM, GitOps or runtime tooling | from a pod in another namespace, `for p in 22 80 443 9200 55000 …; do nc -z -w1 <pod IP> $p; done` against pods in `wazuh`, `argocd` or `falco` | Kubernetes port scan (monitor) | critical |
+| Lateral movement into a security namespace | one connection from another namespace to a port the NetworkPolicies of `wazuh`, `argocd` or `falco` do not open | GKE connection denied into a security namespace | medium |
+
 ### Google Cloud (audit logs, `gcp-security` and the standard `gcp` rules)
 
 | Technique | Try it | Rule | Level |
@@ -345,7 +362,8 @@ resources (the Google Cloud rules), removed right after.
   the Data Access log.
 - Kubernetes reads other than secrets: the Log Router keeps only secret reads, `nodes/proxy` and
   TokenRequests from the Kubernetes Data Access log and drops the rest.
-- Port scans inside the cluster: no rule; the default-deny NetworkPolicies of `wazuh` and `falco` block them.
+- Port scans of pods that no NetworkPolicy isolates (only `wazuh`, `argocd` and `falco` have default-deny
+  policies), of node IPs and of hosts outside the cluster: only connections a NetworkPolicy denies are logged.
 - Events deleted one by one (`kubectl delete events --all`) or through the core API collection: GKE audits
   only the `events.k8s.io` collection delete.
 - Events that arrive while a detector is rebuilt or while the managers reload the custom space, both of
