@@ -1,0 +1,102 @@
+{
+  "type": "monitor",
+  "monitor_type": "query_level_monitor",
+  "name": "Permission enumeration",
+  "enabled": true,
+  "schedule": {
+    "period": {
+      "interval": 5,
+      "unit": "MINUTES"
+    }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": [
+          "wazuh-events-v5-cloud-services"
+        ],
+        "query": {
+          "size": 0,
+          "track_total_hits": true,
+          "query": {
+            "bool": {
+              "filter": [
+                {
+                  "range": {
+                    "@timestamp": {
+                      "gte": "{{period_end}}||-5m",
+                      "lte": "{{period_end}}",
+                      "format": "epoch_millis"
+                    }
+                  }
+                },
+                {
+                  "term": {
+                    "event.outcome": "failure"
+                  }
+                }
+              ]
+            }
+          },
+          "aggs": {
+            "by_caller": {
+              "terms": {
+                "script": {
+                  "lang": "painless",
+                  "source": "doc['user.name'].size()!=0 ? doc['user.name'].value : (doc['source.ip'].size()!=0 ? doc['source.ip'].value.toString() : 'unknown')"
+                },
+                "size": 20
+              },
+              "aggs": {
+                "methods": {
+                  "cardinality": {
+                    "field": "event.code"
+                  }
+                },
+                "top": {
+                  "terms": {
+                    "field": "event.code",
+                    "size": 5
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "query_level_trigger": {
+        "name": "One caller was denied on 4 or more API methods in 5 minutes",
+        "severity": "1",
+        "condition": {
+          "script": {
+            "source": "for (def b : ctx.results[0].aggregations.by_caller.buckets) { if (b['methods']['value'] >= 4) { return true; } } return false;",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Slack",
+            "destination_id": "wazuh-slack",
+            "subject_template": {
+              "source": "Permission enumeration",
+              "lang": "mustache"
+            },
+            "message_template": {
+              "source": "{\"attachments\": [{\"color\": \"#FF1744\", \"mrkdwn_in\": [\"text\"], \"text\": \":rotating_light: *Permission enumeration*\\nCallers denied by Google Cloud or Kubernetes in the last 5 minutes (4 or more different API methods is how stolen credentials are probed):{{#ctx.results.0.aggregations.by_caller.buckets}}\\n`{{key}}`: {{doc_count}} denied, {{methods.value}} methods ({{#top.buckets}}`{{key}}` {{/top.buckets}}){{/ctx.results.0.aggregations.by_caller.buckets}}\\nChecked: {{ctx.periodEnd}}\"}]}",
+              "lang": "mustache"
+            },
+            "throttle_enabled": true,
+            "throttle": {
+              "value": 30,
+              "unit": "MINUTES"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

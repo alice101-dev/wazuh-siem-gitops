@@ -1,9 +1,16 @@
 locals {
-  k8s_data_access_noise = var.k8s_data_access_noise_filter == "" ? [] : [{
-    name        = "k8s-data-access-noise"
-    description = "Kubernetes Data Access logs other than secret reads, nodes/proxy and TokenRequests by principals outside the cluster system"
-    filter      = var.k8s_data_access_noise_filter
-  }]
+  data_access_noise = concat(
+    var.k8s_data_access_noise_filter == "" ? [] : [{
+      name        = "k8s-data-access-noise"
+      description = "Kubernetes Data Access logs other than denied requests, secret reads, nodes/proxy and TokenRequests by principals outside the cluster system"
+      filter      = var.k8s_data_access_noise_filter
+    }],
+    var.admin_read_noise_filter == "" ? [] : [{
+      name        = "admin-read-noise"
+      description = "Successful reads of the services whose Data Access logs are on only to record denied requests"
+      filter      = var.admin_read_noise_filter
+    }],
+  )
 
   destination_names = {
     for k, s in var.sinks : k => (s.destination_type == "pubsub"
@@ -33,17 +40,22 @@ module "logging_sink" {
       destination_name = s.destination_type == "pubsub" ? data.google_pubsub_topic.destination[k].name : data.google_storage_bucket.destination[k].name
       filter           = coalesce(s.filter, var.security_log_filter)
       description      = s.description
-      exclusions       = concat(s.exclusions, local.k8s_data_access_noise)
+      exclusions       = concat(s.exclusions, local.data_access_noise)
     }
   }
 }
 
-# The _Default bucket would ingest, and bill, every Kubernetes read; only the kept ones are stored.
-resource "google_logging_project_exclusion" "k8s_data_access_noise" {
-  count = length(local.k8s_data_access_noise)
+# The _Default bucket would ingest, and bill, every read; only the kept ones are stored.
+resource "google_logging_project_exclusion" "data_access_noise" {
+  for_each = { for e in local.data_access_noise : e.name => e }
 
   project     = var.project_id
-  name        = "${var.env}-${local.k8s_data_access_noise[0].name}"
-  description = local.k8s_data_access_noise[0].description
-  filter      = local.k8s_data_access_noise[0].filter
+  name        = "${var.env}-${each.key}"
+  description = each.value.description
+  filter      = each.value.filter
+}
+
+moved {
+  from = google_logging_project_exclusion.k8s_data_access_noise[0]
+  to   = google_logging_project_exclusion.data_access_noise["k8s-data-access-noise"]
 }

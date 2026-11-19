@@ -39,6 +39,7 @@ configMapGenerator:
       - alerting/pipeline-freshness-monitor.json
       - alerting/falco-canary-monitor.json
       - alerting/port-scan-monitor.json
+      - alerting/permission-enumeration-monitor.json
 images:
   - name: wazuh/wazuh-indexer
     newTag: 5.0.0-rc2

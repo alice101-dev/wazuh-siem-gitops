@@ -44,3 +44,9 @@ variable "k8s_data_access_noise_filter" {
   type        = string
   default     = ""
 }
+
+variable "admin_read_noise_filter" {
+  description = "Logging query of the Data Access logs to drop for services whose logs are on only to record denied requests: excluded from the _Default bucket (no ingestion charge) and from every sink. Empty keeps them all."
+  type        = string
+  default     = ""
+}

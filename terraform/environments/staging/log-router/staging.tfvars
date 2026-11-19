@@ -16,10 +16,19 @@ EOT
 # the GitOps and secret controllers and the enrollment hook; drop every other Kubernetes Data Access log.
 k8s_data_access_noise_filter = <<-EOT
   log_id("cloudaudit.googleapis.com/data_access") AND resource.type="k8s_cluster"
+  AND NOT protoPayload.status.code=7
   AND (
     NOT protoPayload.methodName=~"^io\.k8s\.core\.v1\.(secrets\.(get|list|watch)|nodes\.proxy\..+|serviceaccounts\.token\.create)$"
     OR protoPayload.authenticationInfo.principalEmail=~"^(system:(node:|kube-|apiserver|gke-|gcp-|anet-|pdcsi-|addon-manager$|kubestore-collector$|cloud-controller-manager|cluster-autoscaler|serviceaccount:(kube-system|gke-[a-z-]+|gmp-system|argocd|cert-manager|external-secrets|falco):|serviceaccount:wazuh:wazuh-enrollment$)|kubelet-nodepool-bootstrap$|.+@container-engine-robot\.iam\.gserviceaccount\.com$)"
   )
+EOT
+
+# Admin reads of every service are audited to see denied ones (permission enumeration); successful reads
+# of the services not listed here are dropped.
+admin_read_noise_filter = <<-EOT
+  log_id("cloudaudit.googleapis.com/data_access")
+  AND NOT protoPayload.status.code=7
+  AND NOT protoPayload.serviceName=("k8s.io" OR "container.googleapis.com" OR "iam.googleapis.com" OR "iamcredentials.googleapis.com" OR "secretmanager.googleapis.com" OR "cloudkms.googleapis.com")
 EOT
 
 sinks = {
