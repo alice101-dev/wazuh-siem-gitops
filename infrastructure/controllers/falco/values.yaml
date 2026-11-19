@@ -207,7 +207,7 @@ customRules:
     - rule: Contact GKE metadata server from container
       desc: A container connected to the metadata server (169.254.169.254), which hands out Google access tokens through Workload Identity, outside the workloads that are meant to use it.
       condition: >
-        evt.type = connect and evt.dir = < and container and fd.sip = "169.254.169.254"
+        evt.type = connect and container and fd.sip = "169.254.169.254"
         and not wazuh_metadata_client
       output: Container contacted the GKE metadata server (connection=%fd.name image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name command=%proc.cmdline)
       priority: CRITICAL
