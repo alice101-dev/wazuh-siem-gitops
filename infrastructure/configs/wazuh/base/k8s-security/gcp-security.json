@@ -25,10 +25,13 @@
   "rules": [
     {
       "title": "GCP service account key created",
-      "description": "A key was created for a service account. This project is keyless: every Google Cloud access goes through Workload Identity, so a key is a persistent credential that should not exist.",
+      "description": "A key was created or uploaded for a service account. This project is keyless: every Google Cloud access goes through Workload Identity, so a key is a persistent credential that should not exist.",
       "level": "critical",
       "selection": {
-        "event.code": "google.iam.admin.v1.CreateServiceAccountKey"
+        "event.code": [
+          "google.iam.admin.v1.CreateServiceAccountKey",
+          "google.iam.admin.v1.UploadServiceAccountKey"
+        ]
       },
       "mitre": {
         "tactic": [
@@ -177,13 +180,14 @@
       }
     },
     {
-      "title": "GCP log sink created or changed",
+      "title": "GCP log sink created, changed or deleted",
       "description": "A Log Router sink was created or changed, which can copy the logs of the project elsewhere or stop them reaching the SIEM.",
       "level": "high",
       "selection": {
         "event.code": [
           "google.logging.v2.ConfigServiceV2.CreateSink",
-          "google.logging.v2.ConfigServiceV2.UpdateSink"
+          "google.logging.v2.ConfigServiceV2.UpdateSink",
+          "google.logging.v2.ConfigServiceV2.DeleteSink"
         ]
       },
       "mitre": {
@@ -229,11 +233,15 @@
       }
     },
     {
-      "title": "GCP KMS key version destroyed",
-      "description": "A Cloud KMS key version was scheduled for destruction; data encrypted with it, such as the cluster disks and secrets, becomes unreadable.",
+      "title": "GCP KMS key version disabled or destroyed",
+      "description": "A version of a Cloud KMS key was disabled, re-enabled or scheduled for destruction. The cluster secrets and every disk are encrypted with these keys: disabling one makes the data unreadable.",
       "level": "critical",
       "selection": {
-        "event.code": "DestroyCryptoKeyVersion"
+        "service.name": "cloudkms.googleapis.com",
+        "event.code": [
+          "DestroyCryptoKeyVersion",
+          "UpdateCryptoKeyVersion"
+        ]
       },
       "mitre": {
         "tactic": [
@@ -362,6 +370,249 @@
         "failed": {
           "event.outcome": "failure"
         }
+      }
+    },
+    {
+      "title": "GCP log exclusion or log bucket changed",
+      "level": "critical",
+      "description": "A log exclusion was created, changed or deleted, or a log bucket or the logging settings were changed: how an attacker stops logs being written or kept without touching the sinks.",
+      "selection": {
+        "event.code": [
+          "google.logging.v2.ConfigServiceV2.CreateExclusion",
+          "google.logging.v2.ConfigServiceV2.UpdateExclusion",
+          "google.logging.v2.ConfigServiceV2.DeleteExclusion",
+          "google.logging.v2.ConfigServiceV2.UpdateBucket",
+          "google.logging.v2.ConfigServiceV2.UpdateBucketAsync",
+          "google.logging.v2.ConfigServiceV2.DeleteBucket",
+          "google.logging.v2.ConfigServiceV2.UpdateSettings",
+          "google.logging.v2.ConfigServiceV2.UpdateCmekSettings"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
+    },
+    {
+      "title": "GKE cluster configuration changed",
+      "level": "critical",
+      "description": "The GKE cluster itself was changed or deleted: control plane access, authorized networks, network policy, logging, monitoring, legacy ABAC, add-ons or credential rotation.",
+      "selection": {
+        "service.name": "container.googleapis.com",
+        "event.code": [
+          "google.container.v1.ClusterManager.UpdateCluster",
+          "google.container.v1beta1.ClusterManager.UpdateCluster",
+          "google.container.v1.ClusterManager.UpdateMaster",
+          "google.container.v1beta1.ClusterManager.UpdateMaster",
+          "google.container.v1.ClusterManager.SetMasterAuth",
+          "google.container.v1beta1.ClusterManager.SetMasterAuth",
+          "google.container.v1.ClusterManager.SetLegacyAbac",
+          "google.container.v1beta1.ClusterManager.SetLegacyAbac",
+          "google.container.v1.ClusterManager.SetNetworkPolicy",
+          "google.container.v1beta1.ClusterManager.SetNetworkPolicy",
+          "google.container.v1.ClusterManager.SetLoggingService",
+          "google.container.v1beta1.ClusterManager.SetLoggingService",
+          "google.container.v1.ClusterManager.SetMonitoringService",
+          "google.container.v1beta1.ClusterManager.SetMonitoringService",
+          "google.container.v1.ClusterManager.SetAddonsConfig",
+          "google.container.v1beta1.ClusterManager.SetAddonsConfig",
+          "google.container.v1.ClusterManager.StartIPRotation",
+          "google.container.v1beta1.ClusterManager.StartIPRotation",
+          "google.container.v1.ClusterManager.CompleteIPRotation",
+          "google.container.v1beta1.ClusterManager.CompleteIPRotation",
+          "google.container.v1.ClusterManager.DeleteCluster",
+          "google.container.v1beta1.ClusterManager.DeleteCluster"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        },
+        "operation_end": {
+          "event.outcome": "unknown"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
+    },
+    {
+      "title": "GCP compute capacity added",
+      "level": "high",
+      "description": "A VM or a GKE node pool was created, or a node pool was resized or reconfigured, by a person or workload rather than GKE itself: how stolen access is turned into crypto mining.",
+      "selection": {
+        "event.code": [
+          "v1.compute.instances.insert",
+          "beta.compute.instances.insert",
+          "google.container.v1.ClusterManager.CreateNodePool",
+          "google.container.v1beta1.ClusterManager.CreateNodePool",
+          "google.container.v1.ClusterManager.UpdateNodePool",
+          "google.container.v1beta1.ClusterManager.UpdateNodePool",
+          "google.container.v1.ClusterManager.SetNodePoolSize",
+          "google.container.v1beta1.ClusterManager.SetNodePoolSize",
+          "google.container.v1.ClusterManager.SetNodePoolAutoscaling",
+          "google.container.v1beta1.ClusterManager.SetNodePoolAutoscaling",
+          "google.container.v1.ClusterManager.SetNodePoolManagement",
+          "google.container.v1beta1.ClusterManager.SetNodePoolManagement"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        },
+        "operation_end": {
+          "event.outcome": "unknown"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0040",
+          "Impact"
+        ],
+        "technique": [
+          "T1496",
+          "Resource Hijacking"
+        ]
+      }
+    },
+    {
+      "title": "GCP workload identity federation changed",
+      "level": "critical",
+      "description": "A workload identity pool or provider was created, changed or restored: an identity outside Google Cloud (GitHub, AWS, any OIDC issuer) can then act as a service account without a key.",
+      "selection": {
+        "service.name": "iam.googleapis.com",
+        "event.code|endswith": [
+          ".CreateWorkloadIdentityPool",
+          ".UpdateWorkloadIdentityPool",
+          ".UndeleteWorkloadIdentityPool",
+          ".CreateWorkloadIdentityPoolProvider",
+          ".UpdateWorkloadIdentityPoolProvider",
+          ".UndeleteWorkloadIdentityPoolProvider",
+          ".CreateWorkloadIdentityPoolProviderKey"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP custom role or service account created",
+      "level": "high",
+      "description": "A custom IAM role was created, changed or restored, or a service account was created, enabled or restored: a role can bundle the permissions to escalate, and a new account is a place to keep access.",
+      "selection": {
+        "event.code": [
+          "google.iam.admin.v1.CreateRole",
+          "google.iam.admin.v1.UpdateRole",
+          "google.iam.admin.v1.UndeleteRole",
+          "google.iam.admin.v1.CreateServiceAccount",
+          "google.iam.admin.v1.EnableServiceAccount",
+          "google.iam.admin.v1.UndeleteServiceAccount"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1136",
+          "Create Account"
+        ]
+      }
+    },
+    {
+      "title": "GCP KMS key IAM policy changed",
+      "level": "high",
+      "description": "Who may use or manage a Cloud KMS key ring or key changed; the keys encrypt the cluster secrets and disks.",
+      "selection": {
+        "service.name": "cloudkms.googleapis.com",
+        "event.code": "SetIamPolicy"
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP VPC routing or peering changed",
+      "level": "high",
+      "description": "A route, Cloud Router or NAT, VPC peering or subnet was created, changed or deleted: how traffic is redirected, a private network is bridged to another one, or flow logs are switched off.",
+      "selection": {
+        "service.name": "compute.googleapis.com",
+        "event.code|endswith": [
+          "compute.routes.insert",
+          "compute.routes.delete",
+          "compute.routers.insert",
+          "compute.routers.patch",
+          "compute.routers.update",
+          "compute.routers.delete",
+          "compute.networks.addPeering",
+          "compute.networks.updatePeering",
+          "compute.networks.removePeering",
+          "compute.networks.patch",
+          "compute.subnetworks.patch"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1599",
+          "Network Boundary Bridging"
+        ]
       }
     }
   ]
