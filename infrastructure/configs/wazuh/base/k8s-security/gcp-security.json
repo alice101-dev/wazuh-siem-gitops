@@ -1,0 +1,255 @@
+{
+  "integration": {
+    "title": "gcp-security",
+    "category": "cloud-services",
+    "description": "High-signal detections on the Google Cloud audit logs of the project, raised above the levels of the standard gcp ruleset."
+  },
+  "detector": {
+    "name": "gcp-security",
+    "indices": [
+      "wazuh-events-v5-cloud-services"
+    ],
+    "interval_minutes": 1
+  },
+  "trusted": {
+    "trusted_google_agent": {
+      "user.name|endswith": [
+        "@container-engine-robot.iam.gserviceaccount.com",
+        "@cloudservices.gserviceaccount.com",
+        "@compute-system.iam.gserviceaccount.com",
+        "@gcp-sa-pubsub.iam.gserviceaccount.com",
+        "@gcp-sa-logging.iam.gserviceaccount.com"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "title": "GCP service account key created",
+      "description": "A key was created for a service account. This project is keyless: every Google Cloud access goes through Workload Identity, so a key is a persistent credential that should not exist.",
+      "level": "critical",
+      "selection": {
+        "event.code": "google.iam.admin.v1.CreateServiceAccountKey"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP project IAM policy changed",
+      "description": "The IAM policy of the project was changed: roles granted or revoked, or the Data Access audit configuration changed.",
+      "level": "high",
+      "selection": {
+        "service.name": "cloudresourcemanager.googleapis.com",
+        "event.code": "SetIamPolicy"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP service account IAM policy changed",
+      "description": "Who may use or impersonate a service account changed, for example a grant of roles/iam.serviceAccountTokenCreator.",
+      "level": "high",
+      "selection": {
+        "event.code": "google.iam.admin.v1.SetIAMPolicy"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP service account impersonated",
+      "description": "A principal minted an access or ID token, or signed with a service account through the IAM Credentials API, acting as that service account.",
+      "level": "high",
+      "selection": {
+        "service.name": "iamcredentials.googleapis.com",
+        "event.code": [
+          "GenerateAccessToken",
+          "GenerateIdToken",
+          "SignBlob",
+          "SignJwt"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0008",
+          "Lateral Movement"
+        ],
+        "technique": [
+          "T1550",
+          "Use Alternate Authentication Material"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP firewall rule created or changed",
+      "description": "A VPC firewall rule was created or changed, which can open a port of the network to the internet.",
+      "level": "high",
+      "selection": {
+        "service.name": "compute.googleapis.com",
+        "event.code": [
+          "v1.compute.firewalls.insert",
+          "v1.compute.firewalls.patch",
+          "v1.compute.firewalls.update",
+          "beta.compute.firewalls.insert",
+          "beta.compute.firewalls.patch",
+          "beta.compute.firewalls.update"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP storage bucket IAM policy changed",
+      "description": "The IAM policy of a Cloud Storage bucket changed, how a bucket is made public (allUsers) or shared outside the project.",
+      "level": "high",
+      "selection": {
+        "event.code": "storage.setIamPermissions"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0010",
+          "Exfiltration"
+        ],
+        "technique": [
+          "T1530",
+          "Data from Cloud Storage"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP log sink created or changed",
+      "description": "A Log Router sink was created or changed, which can copy the logs of the project elsewhere or stop them reaching the SIEM.",
+      "level": "high",
+      "selection": {
+        "event.code": [
+          "google.logging.v2.ConfigServiceV2.CreateSink",
+          "google.logging.v2.ConfigServiceV2.UpdateSink"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP secret read outside External Secrets",
+      "description": "A Secret Manager secret version was read by a principal other than External Secrets.",
+      "level": "high",
+      "selection": {
+        "event.code": "google.cloud.secretmanager.v1.SecretManagerService.AccessSecretVersion"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1555",
+          "Credentials from Password Stores"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        },
+        "external_secrets": {
+          "user.id|endswith": ".svc.id.goog[external-secrets/external-secrets]"
+        }
+      }
+    },
+    {
+      "title": "GCP KMS key version destroyed",
+      "description": "A Cloud KMS key version was scheduled for destruction; data encrypted with it, such as the cluster disks and secrets, becomes unreadable.",
+      "level": "critical",
+      "selection": {
+        "event.code": "DestroyCryptoKeyVersion"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0040",
+          "Impact"
+        ],
+        "technique": [
+          "T1485",
+          "Data Destruction"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    }
+  ]
+}
