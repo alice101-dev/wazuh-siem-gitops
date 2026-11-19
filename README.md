@@ -124,8 +124,8 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Wazuh indexer disk | a node disk is above 75% | orange |
 | Wazuh GCP log pipeline stalled | no GCP event is indexed for 15 minutes | bright red |
 | Falco runtime detection silent | no Falco canary reaches Wazuh for 30 minutes | bright red |
-| Kubernetes port scan | NetworkPolicies deny one pod 10 or more ports or 10 or more hosts in 5 minutes | bright red |
-| Permission enumeration | Google Cloud or Kubernetes denies one caller on 4 or more API methods in 5 minutes | bright red |
+| Kubernetes port scan | NetworkPolicies deny one pod 10 or more ports or 10 or more hosts in 5 minutes; one message per pod | bright red |
+| Permission enumeration | Google Cloud or Kubernetes denies one caller on 4 or more API methods in 5 minutes; one message per caller | bright red |
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
 
@@ -142,7 +142,8 @@ Google Cloud logs a denied read only in the Data Access log, so `ADMIN_READ` is 
 second exclusion drops the successful reads of the services that are not audited for their own sake. The
 monitor [`permission-enumeration-monitor.json`](infrastructure/configs/wazuh/base/alerting/permission-enumeration-monitor.json)
 groups the denied requests of the last 5 minutes by principal, or by source IP when the denial carries no
-identity, and alerts when one caller was denied on 4 or more API methods.
+identity, and alerts when one caller was denied on 4 or more API methods, one alert and one Slack message
+per caller, like the port scan monitor.
 
 [`k8s-security/gke-kubernetes.json`](infrastructure/configs/wazuh/base/k8s-security/gke-kubernetes.json) holds Sigma rules on
 those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
@@ -199,7 +200,10 @@ decoder ([`gke-network-policy.json`](infrastructure/configs/wazuh/base/k8s-secur
 writes the source pod, the destination pod, IP and port into `wazuh-events-v5-network-activity`. A medium
 rule marks a denied connection from another namespace into a security namespace, and the monitor
 [`port-scan-monitor.json`](infrastructure/configs/wazuh/base/alerting/port-scan-monitor.json) groups the
-denials of the last 5 minutes by source pod and alerts when one pod reached 10 or more ports or hosts.
+denials of the last 5 minutes by source pod and alerts when one pod reached 10 or more ports or hosts. It is
+a bucket-level monitor: every pod gets its own alert and one Slack message when its scan starts, while
+another pod's scan already alerting does not hold it back. The alerting plugin does not hand the bucket
+counts to the message, so the message names the pod and the window, and the counts are in the index.
 
 The same hook writes the **GKE Kubernetes security** dashboard: findings by level, rule and time, the
 actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service
