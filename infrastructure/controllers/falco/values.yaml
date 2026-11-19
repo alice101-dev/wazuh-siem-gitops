@@ -23,11 +23,66 @@ falcoctl:
   artifact:
     follow:
       enabled: false
+  config:
+    artifact:
+      install:
+        # Stable rules plus the incubating and sandbox rulesets; only the rules enabled under falco.rules run.
+        refs: ["falco-rules:5", "falco-incubating-rules:6", "falco-sandbox-rules:6"]
 
 falco:
   priority: notice
   # Emit every rule an event matches, not only the first: a container can be privileged and untrusted at once.
   rule_matching: all
+  rules_files:
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/falco-incubating_rules.yaml
+    - /etc/falco/falco-sandbox_rules.yaml
+    - /etc/falco/falco_rules.local.yaml
+    - /etc/falco/rules.d
+  # Incubating and sandbox rules are off except the ones below, which add coverage the stable and custom rules lack.
+  rules:
+    - disable:
+        tag: maturity_incubating
+    - disable:
+        tag: maturity_sandbox
+    - enable:
+        rule: Modify Shell Configuration File
+    - enable:
+        rule: Modify Python Startup Hook File
+    - enable:
+        rule: Create files below dev
+    - enable:
+        rule: Change thread namespace
+    - enable:
+        rule: Exfiltrating Artifacts via Kubernetes Control Plane
+    - enable:
+        rule: Potential Local Privilege Escalation via Environment Variables Misuse
+    - enable:
+        rule: Backdoored library loaded into SSHD (CVE-2024-3094)
+    - enable:
+        rule: BPF Program Not Profiled
+    - enable:
+        rule: Launch Ingress Remote File Copy Tools in Container
+    - enable:
+        rule: User mgmt binaries
+    - enable:
+        rule: Detect crypto miners using the Stratum protocol
+    - enable:
+        rule: Sudo Potential Privilege Escalation
+    - enable:
+        rule: Unprivileged Delegation of Page Faults Handling to a Userspace Process
+    - enable:
+        rule: Polkit Local Privilege Escalation Vulnerability (CVE-2021-4034)
+    - enable:
+        rule: Web Server Spawned Shell
+    - enable:
+        rule: Reverse Shell from Web Server
+    - enable:
+        rule: Privileged Container Device Access
+    - enable:
+        rule: Container Access to Host Sensitive Paths
+    - enable:
+        rule: Basic Interactive Reconnaissance
   json_output: true
   json_include_output_property: true
   json_include_output_fields_property: true
@@ -389,6 +444,32 @@ customRules:
       output: Environment of another process read in container (file=%fd.name process=%proc.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
       priority: ERROR
       tags: [container, filesystem, mitre_credential_access, T1552.007]
+
+    # Upstream incubating and sandbox rules that the GKE system and platform workloads trip by design.
+    - rule: Privileged Container Device Access
+      condition: and not wazuh_platform_container
+      override:
+        condition: append
+
+    - rule: Container Access to Host Sensitive Paths
+      condition: and not wazuh_platform_container
+      override:
+        condition: append
+
+    - rule: Change thread namespace
+      condition: and not wazuh_platform_container
+      override:
+        condition: append
+
+    - rule: BPF Program Not Profiled
+      condition: and not wazuh_platform_container
+      override:
+        condition: append
+
+    - rule: Launch Ingress Remote File Copy Tools in Container
+      condition: and not wazuh_platform_container
+      override:
+        condition: append
 
     - rule: Linux Kernel Module Injection Detected
       override:
