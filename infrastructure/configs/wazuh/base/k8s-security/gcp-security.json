@@ -250,6 +250,119 @@
           "event.outcome": "failure"
         }
       }
+    },
+    {
+      "title": "GCP instance or project metadata changed",
+      "description": "The metadata of the project or of a VM changed, how SSH keys are planted on every VM, the GKE nodes included, or a startup script is set.",
+      "level": "high",
+      "selection": {
+        "service.name": "compute.googleapis.com",
+        "event.code": [
+          "v1.compute.projects.setCommonInstanceMetadata",
+          "v1.compute.instances.setMetadata",
+          "beta.compute.projects.setCommonInstanceMetadata",
+          "beta.compute.instances.setMetadata"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP storage HMAC key created",
+      "description": "An HMAC key was created for Cloud Storage: a long-lived, S3-compatible credential that bypasses Workload Identity.",
+      "level": "critical",
+      "selection": {
+        "event.code": "storage.hmacKeys.create"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP Pub/Sub topic or subscription changed",
+      "description": "A Pub/Sub topic or subscription was created, changed or deleted; the SIEM receives every log through Pub/Sub, so this can divert or cut it.",
+      "level": "high",
+      "selection": {
+        "service.name": "pubsub.googleapis.com",
+        "event.code": [
+          "google.pubsub.v1.Publisher.CreateTopic",
+          "google.pubsub.v1.Publisher.UpdateTopic",
+          "google.pubsub.v1.Publisher.DeleteTopic",
+          "google.pubsub.v1.Publisher.DetachSubscription",
+          "google.pubsub.v1.Subscriber.CreateSubscription",
+          "google.pubsub.v1.Subscriber.UpdateSubscription",
+          "google.pubsub.v1.Subscriber.DeleteSubscription",
+          "google.pubsub.v1.Subscriber.ModifyPushConfig",
+          "google.pubsub.v1.Subscriber.Seek"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
+    },
+    {
+      "title": "GCP API enabled or disabled",
+      "description": "A Google Cloud API was enabled or disabled on the project, how unused services are switched on for abuse (compute for mining) or logging and security services are switched off.",
+      "level": "high",
+      "selection": {
+        "event.code": [
+          "google.api.serviceusage.v1.ServiceUsage.EnableService",
+          "google.api.serviceusage.v1.ServiceUsage.DisableService",
+          "google.api.serviceusage.v1.ServiceUsage.BatchEnableServices"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      }
     }
   ]
 }
