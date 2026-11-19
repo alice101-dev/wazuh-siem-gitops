@@ -164,19 +164,25 @@ def reconcile_rules(api, integration_id, config):
             log(f"Rule '{title}' deleted")
 
 
-def promote(api, space, operations=("add", "update", "remove")):
-    """Promote the changes of a space whose operation is in operations; the policy update rides along."""
-    _, preview = api.call("GET", f"/_plugins/_content_manager/promote?space={space}")
-    changes = {
-        kind: items if kind == "policy" else [item for item in items if item["operation"] in operations]
-        for kind, items in preview.get("changes", {}).items()
-    }
-    if not any(items for kind, items in changes.items() if kind != "policy"):
-        log(f"Nothing to promote from {space} ({'/'.join(operations)})")
-        return
-    api.call("POST", "/_plugins/_content_manager/promote", {"space": space, "changes": changes})
-    summary = {kind: len(items) for kind, items in changes.items() if items and kind != "policy"}
-    log(f"Promoted from {space} ({'/'.join(operations)}): {summary}")
+def promote(api, space, operations=("add", "update", "remove"), rounds=3):
+    """Promote the changes of a space whose operation is in operations; the policy update rides along.
+
+    The preview lists the removal of a deleted rule only once the integration that dropped it is
+    promoted, so the preview is taken again after each promotion until it is empty.
+    """
+    for _ in range(rounds):
+        _, preview = api.call("GET", f"/_plugins/_content_manager/promote?space={space}")
+        changes = {
+            kind: items if kind == "policy" else [item for item in items if item["operation"] in operations]
+            for kind, items in preview.get("changes", {}).items()
+        }
+        if not any(items for kind, items in changes.items() if kind != "policy"):
+            log(f"Nothing (more) to promote from {space} ({'/'.join(operations)})")
+            return
+        api.call("POST", "/_plugins/_content_manager/promote", {"space": space, "changes": changes})
+        summary = {kind: len(items) for kind, items in changes.items() if items and kind != "policy"}
+        log(f"Promoted from {space} ({'/'.join(operations)}): {summary}")
+    sys.exit(f"Promotion from {space} still has changes after {rounds} rounds")
 
 
 def detector_name(hit):
