@@ -203,9 +203,8 @@ into `wazuh-events-v5-security`, and a `falco` detector turns them into findings
 | Error, Warning | high |
 | Notice | medium |
 
-On top of the stock Falco rules, [`values.yaml`](infrastructure/controllers/falco/values.yaml) adds four
-Critical rules evaluated when a container starts, which the audit log cannot see because it keeps the pod
-spec unindexed:
+On top of the stock Falco rules, [`values.yaml`](infrastructure/controllers/falco/values.yaml) adds rules
+evaluated when a container starts, which the audit log cannot see because it keeps the pod spec unindexed:
 
 | Falco rule | Fires when a container starts |
 |---|---|
@@ -213,6 +212,15 @@ spec unindexed:
 | Container with host namespaces started | in the host network, PID or IPC namespace |
 | Container with sensitive host mount started | with `/`, `/etc`, `/proc`, `/sys`, `/dev`, a container runtime socket or kubelet credentials mounted |
 | Container from an untrusted image started | from an image outside the allowlist of what this cluster runs |
+
+and rules for post-exploitation steps the stock ruleset leaves out:
+
+| Falco rule | Priority | Fires when |
+|---|---|---|
+| Contact GKE metadata server from container | Critical | a container other than the collector, Falcosidekick, External Secrets and GKE system pods connects to `169.254.169.254`, where Workload Identity hands out Google access tokens |
+| Package management process launched in container | Error | `apk`, `apt`, `yum`, `dnf`, `pip`, `npm` and the like run inside a running container |
+| Write below binary directory in container | Error | a file is written below `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin` or `/usr/local/bin` |
+| Shell history deleted or truncated in container | Warning | a `*_history` file is deleted, renamed or emptied |
 
 The stock rule *Redirect STDOUT/STDIN to Network Connection in Container*, which is how a reverse shell
 looks, is raised from Notice to Critical.
