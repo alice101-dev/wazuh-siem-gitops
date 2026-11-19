@@ -47,6 +47,7 @@ falco:
         - wazuh_proc_pid: "%proc.pid"
         - wazuh_proc_pname: "%proc.pname"
         - wazuh_user_name: "%user.name"
+        - wazuh_user_uid: "%user.uid"
         - wazuh_fd_name: "%fd.name"
         - wazuh_evt_type: "%evt.type"
 

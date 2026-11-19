@@ -97,9 +97,6 @@
               "process.parent.name": "$_falco.output_fields.wazuh_proc_pname"
             },
             {
-              "user.name": "$_falco.output_fields.wazuh_user_name"
-            },
-            {
               "container.id": "$_falco.output_fields.wazuh_container_id"
             },
             {
@@ -120,6 +117,22 @@
             {
               "orchestrator.resource.name": "$_falco.output_fields.wazuh_k8s_pod"
             },
+            {
+              "user.id": "to_string($_falco.output_fields.wazuh_user_uid)"
+            }
+          ]
+        },
+        {
+          "check": "exists($_falco.output_fields.wazuh_user_name) AND string_not_equal($_falco.output_fields.wazuh_user_name, \"<NA>\")",
+          "map": [
+            {
+              "user.name": "$_falco.output_fields.wazuh_user_name"
+            }
+          ]
+        },
+        {
+          "check": "exists($_falco.output_fields.wazuh_fd_name) AND string_not_equal($_falco.output_fields.wazuh_fd_name, \"<NA>\")",
+          "map": [
             {
               "file.path": "$_falco.output_fields.wazuh_fd_name"
             }
