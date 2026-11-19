@@ -21,6 +21,16 @@ release_completed_hooks() {
     done
 }
 
+# The cluster is about to go, so the ExternalSecret cleanup finalizer has nothing left to clean up, and it
+# never clears when the External Secrets controller is already gone.
+release_externalsecret_finalizers() {
+  kubectl get externalsecrets.external-secrets.io -A -o jsonpath='{range .items[?(@.metadata.finalizers)]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null |
+    while read -r ns name; do
+      echo "   - release the finalizer of ExternalSecret $ns/$name"
+      kubectl -n "$ns" patch externalsecret "$name" --type json -p '[{"op":"remove","path":"/metadata/finalizers"}]' >/dev/null
+    done
+}
+
 report_blockers() {
   for app in $(kubectl -n argocd get applications "$@" -o name 2>/dev/null); do
     echo "   ! $app is still deleting; its resources that still exist:"
@@ -57,6 +67,7 @@ if gcloud container clusters describe "$CLUSTER" --location "$LOCATION" --projec
     kubectl -n argocd delete application root --wait=true
   fi
   kubectl -n argocd delete applicationsets --all --cascade=orphan --wait=true
+  release_externalsecret_finalizers
   for layer in apps configs; do
     echo "   - delete layer $layer"
     delete_applications -l "layer=$layer"
