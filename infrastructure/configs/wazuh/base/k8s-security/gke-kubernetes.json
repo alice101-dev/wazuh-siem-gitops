@@ -6,7 +6,9 @@
   },
   "detector": {
     "name": "gke-kubernetes",
-    "indices": ["wazuh-events-v5-cloud-services"],
+    "indices": [
+      "wazuh-events-v5-cloud-services"
+    ],
     "interval_minutes": 1
   },
   "trusted": {
@@ -32,7 +34,10 @@
       "user.name|endswith": "@container-engine-robot.iam.gserviceaccount.com"
     },
     "trusted_exact": {
-      "user.name": ["kubelet-nodepool-bootstrap", "system:serviceaccount:wazuh:wazuh-enrollment"]
+      "user.name": [
+        "kubelet-nodepool-bootstrap",
+        "system:serviceaccount:wazuh:wazuh-enrollment"
+      ]
     }
   },
   "rules": [
@@ -50,9 +55,26 @@
         ]
       },
       "exclude": {
-        "protected_namespace": { "orchestrator.namespace": ["kube-system", "wazuh", "argocd", "cert-manager", "external-secrets"] }
+        "protected_namespace": {
+          "orchestrator.namespace": [
+            "kube-system",
+            "wazuh",
+            "argocd",
+            "cert-manager",
+            "external-secrets"
+          ]
+        }
       },
-      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
+      "mitre": {
+        "tactic": [
+          "TA0002",
+          "Execution"
+        ],
+        "technique": [
+          "T1609",
+          "Container Administration Command"
+        ]
+      }
     },
     {
       "title": "GKE exec or attach into a system or security pod",
@@ -66,9 +88,24 @@
           "io.k8s.core.v1.pods.attach.create",
           "io.k8s.core.v1.pods.attach.get"
         ],
-        "orchestrator.namespace": ["kube-system", "wazuh", "argocd", "cert-manager", "external-secrets"]
+        "orchestrator.namespace": [
+          "kube-system",
+          "wazuh",
+          "argocd",
+          "cert-manager",
+          "external-secrets"
+        ]
       },
-      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
+      "mitre": {
+        "tactic": [
+          "TA0002",
+          "Execution"
+        ],
+        "technique": [
+          "T1609",
+          "Container Administration Command"
+        ]
+      }
     },
     {
       "title": "GKE ephemeral container added to a pod",
@@ -81,7 +118,16 @@
           "io.k8s.core.v1.pods.ephemeralcontainers.update"
         ]
       },
-      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
+      "mitre": {
+        "tactic": [
+          "TA0002",
+          "Execution"
+        ],
+        "technique": [
+          "T1609",
+          "Container Administration Command"
+        ]
+      }
     },
     {
       "title": "GKE port-forward to a pod",
@@ -94,7 +140,16 @@
           "io.k8s.core.v1.pods.portforward.get"
         ]
       },
-      "mitre": { "tactic": ["TA0011", "Command and Control"], "technique": ["T1572", "Protocol Tunneling"] }
+      "mitre": {
+        "tactic": [
+          "TA0011",
+          "Command and Control"
+        ],
+        "technique": [
+          "T1572",
+          "Protocol Tunneling"
+        ]
+      }
     },
     {
       "title": "GKE workload created outside GitOps",
@@ -113,17 +168,46 @@
         ]
       },
       "exclude": {
-        "system_namespace": { "orchestrator.namespace": "kube-system" }
+        "system_namespace": {
+          "orchestrator.namespace": [
+            "kube-system",
+            "kube-public",
+            "kube-node-lease",
+            "wazuh",
+            "argocd",
+            "cert-manager",
+            "external-secrets",
+            "falco"
+          ]
+        }
       },
-      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1610", "Deploy Container"] }
+      "mitre": {
+        "tactic": [
+          "TA0002",
+          "Execution"
+        ],
+        "technique": [
+          "T1610",
+          "Deploy Container"
+        ]
+      }
     },
     {
-      "title": "GKE workload created in kube-system outside GitOps",
-      "description": "A pod or workload controller was created in kube-system by a principal other than the GKE system components, a common place to hide a privileged backdoor.",
+      "title": "GKE workload created in a system or security namespace outside GitOps",
+      "description": "A pod or workload controller was created outside GitOps in kube-system, kube-public, kube-node-lease or a namespace of the SIEM, GitOps, secret or runtime security tooling, a common place to hide a privileged backdoor or tamper with the defences.",
       "level": "critical",
       "selection": {
         "event.outcome": "success",
-        "orchestrator.namespace": "kube-system",
+        "orchestrator.namespace": [
+          "kube-system",
+          "kube-public",
+          "kube-node-lease",
+          "wazuh",
+          "argocd",
+          "cert-manager",
+          "external-secrets",
+          "falco"
+        ],
         "event.code": [
           "io.k8s.core.v1.pods.create",
           "io.k8s.apps.v1.deployments.create",
@@ -134,7 +218,16 @@
           "io.k8s.batch.v1.cronjobs.create"
         ]
       },
-      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1610", "Deploy Container"] }
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1610",
+          "Deploy Container"
+        ]
+      }
     },
     {
       "title": "GKE workload modified outside GitOps",
@@ -157,7 +250,16 @@
           "io.k8s.batch.v1.cronjobs.update"
         ]
       },
-      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1525", "Implant Internal Image"] }
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1525",
+          "Implant Internal Image"
+        ]
+      }
     },
     {
       "title": "GKE secret changed outside GitOps",
@@ -172,7 +274,16 @@
           "io.k8s.core.v1.secrets.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0006", "Credential Access"], "technique": ["T1552", "Unsecured Credentials"] }
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1552",
+          "Unsecured Credentials"
+        ]
+      }
     },
     {
       "title": "GKE kube-system ConfigMap changed",
@@ -188,7 +299,16 @@
           "io.k8s.core.v1.configmaps.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
     },
     {
       "title": "GKE NetworkPolicy changed outside GitOps",
@@ -203,7 +323,16 @@
           "io.k8s.networking.v1.networkpolicies.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
     },
     {
       "title": "GKE namespace changed or deleted outside GitOps",
@@ -217,7 +346,16 @@
           "io.k8s.core.v1.namespaces.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
     },
     {
       "title": "GKE persistent volume deleted outside GitOps",
@@ -230,7 +368,16 @@
           "io.k8s.core.v1.persistentvolumes.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0040", "Impact"], "technique": ["T1485", "Data Destruction"] }
+      "mitre": {
+        "tactic": [
+          "TA0040",
+          "Impact"
+        ],
+        "technique": [
+          "T1485",
+          "Data Destruction"
+        ]
+      }
     },
     {
       "title": "GKE resource deleted in a system or security namespace",
@@ -238,7 +385,13 @@
       "level": "high",
       "selection": {
         "event.outcome": "success",
-        "orchestrator.namespace": ["kube-system", "wazuh", "argocd", "cert-manager", "external-secrets"],
+        "orchestrator.namespace": [
+          "kube-system",
+          "wazuh",
+          "argocd",
+          "cert-manager",
+          "external-secrets"
+        ],
         "event.code": [
           "io.k8s.core.v1.pods.delete",
           "io.k8s.core.v1.services.delete",
@@ -252,9 +405,21 @@
         ]
       },
       "exclude": {
-        "covered_by_kube_system_configmap": { "orchestrator.namespace": "kube-system", "event.code": "io.k8s.core.v1.configmaps.delete" }
+        "covered_by_kube_system_configmap": {
+          "orchestrator.namespace": "kube-system",
+          "event.code": "io.k8s.core.v1.configmaps.delete"
+        }
       },
-      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
     },
     {
       "title": "GKE service exposed outside GitOps",
@@ -277,7 +442,16 @@
           "io.k8s.networking.gateway.v1.httproutes.patch"
         ]
       },
-      "mitre": { "tactic": ["TA0001", "Initial Access"], "technique": ["T1133", "External Remote Services"] }
+      "mitre": {
+        "tactic": [
+          "TA0001",
+          "Initial Access"
+        ],
+        "technique": [
+          "T1133",
+          "External Remote Services"
+        ]
+      }
     },
     {
       "title": "GKE RBAC role created or changed",
@@ -294,7 +468,16 @@
           "io.k8s.authorization.rbac.v1.roles.patch"
         ]
       },
-      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1098", "Account Manipulation"] }
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
     },
     {
       "title": "GKE RBAC binding created or changed",
@@ -311,7 +494,16 @@
           "io.k8s.authorization.rbac.v1.rolebindings.patch"
         ]
       },
-      "mitre": { "tactic": ["TA0004", "Privilege Escalation"], "technique": ["T1098", "Account Manipulation"] }
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
     },
     {
       "title": "GKE service account created in kube-system",
@@ -322,7 +514,16 @@
         "event.code": "io.k8s.core.v1.serviceaccounts.create",
         "orchestrator.namespace": "kube-system"
       },
-      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1136", "Create Account"] }
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1136",
+          "Create Account"
+        ]
+      }
     },
     {
       "title": "GKE write denied to a workload service account",
@@ -333,7 +534,16 @@
         "user.name|startswith": "system:serviceaccount:",
         "error.message|contains": "is forbidden: User"
       },
-      "mitre": { "tactic": ["TA0007", "Discovery"], "technique": ["T1069", "Permission Groups Discovery"] }
+      "mitre": {
+        "tactic": [
+          "TA0007",
+          "Discovery"
+        ],
+        "technique": [
+          "T1069",
+          "Permission Groups Discovery"
+        ]
+      }
     },
     {
       "title": "GKE write denied to a user",
@@ -344,9 +554,20 @@
         "error.message|contains": "is forbidden: User"
       },
       "exclude": {
-        "service_account": { "user.name|startswith": "system:serviceaccount:" }
+        "service_account": {
+          "user.name|startswith": "system:serviceaccount:"
+        }
       },
-      "mitre": { "tactic": ["TA0007", "Discovery"], "technique": ["T1069", "Permission Groups Discovery"] }
+      "mitre": {
+        "tactic": [
+          "TA0007",
+          "Discovery"
+        ],
+        "technique": [
+          "T1069",
+          "Permission Groups Discovery"
+        ]
+      }
     },
     {
       "title": "GKE API write from a scripting or attack tool",
@@ -366,7 +587,16 @@
           "kubeletctl"
         ]
       },
-      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1106", "Native API"] }
+      "mitre": {
+        "tactic": [
+          "TA0002",
+          "Execution"
+        ],
+        "technique": [
+          "T1106",
+          "Native API"
+        ]
+      }
     },
     {
       "title": "GKE certificate signing request created",
@@ -376,7 +606,16 @@
         "event.outcome": "success",
         "event.code": "io.k8s.certificates.v1.certificatesigningrequests.create"
       },
-      "mitre": { "tactic": ["TA0006", "Credential Access"], "technique": ["T1649", "Steal or Forge Authentication Certificates"] }
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1649",
+          "Steal or Forge Authentication Certificates"
+        ]
+      }
     },
     {
       "title": "GKE certificate signing request approved",
@@ -389,7 +628,16 @@
           "io.k8s.certificates.v1.certificatesigningrequests.approval.patch"
         ]
       },
-      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1649", "Steal or Forge Authentication Certificates"] }
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1649",
+          "Steal or Forge Authentication Certificates"
+        ]
+      }
     },
     {
       "title": "GKE admission webhook changed",
@@ -408,7 +656,16 @@
           "io.k8s.admissionregistration.v1.validatingwebhookconfigurations.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
     },
     {
       "title": "GKE aggregated API service registered",
@@ -422,7 +679,16 @@
           "io.k8s.apiregistration.v1.apiservices.patch"
         ]
       },
-      "mitre": { "tactic": ["TA0006", "Credential Access"], "technique": ["T1557", "Adversary-in-the-Middle"] }
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1557",
+          "Adversary-in-the-Middle"
+        ]
+      }
     },
     {
       "title": "GKE custom resource definition changed outside GitOps",
@@ -437,7 +703,16 @@
           "io.k8s.apiextensions.v1.customresourcedefinitions.delete"
         ]
       },
-      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1098", "Account Manipulation"] }
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
     },
     {
       "title": "GKE request by an anonymous user",
@@ -446,9 +721,21 @@
       "trusted": false,
       "selection": {
         "event.outcome": "success",
-        "user.name": ["system:anonymous", "system:unauthenticated"]
+        "user.name": [
+          "system:anonymous",
+          "system:unauthenticated"
+        ]
       },
-      "mitre": { "tactic": ["TA0001", "Initial Access"], "technique": ["T1078", "Valid Accounts"] }
+      "mitre": {
+        "tactic": [
+          "TA0001",
+          "Initial Access"
+        ],
+        "technique": [
+          "T1078",
+          "Valid Accounts"
+        ]
+      }
     }
   ]
 }

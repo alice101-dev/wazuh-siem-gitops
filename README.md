@@ -137,7 +137,7 @@ External Secrets and the enrollment hook, so what reaches Slack is a person or a
 | Ephemeral container added to a pod (`kubectl debug`) | high |
 | Port-forward to a pod | medium |
 | Pod or workload controller created outside GitOps | high |
-| Pod or workload controller created in `kube-system` | critical |
+| Pod or workload controller created in `kube-system`, `kube-public`, `kube-node-lease` or a namespace of the SIEM, GitOps, secret or runtime tooling | critical |
 | Pod or workload controller patched or updated outside GitOps | high |
 | Secret created, changed or deleted outside GitOps | high |
 | `kube-system` ConfigMap created, changed or deleted | high |
@@ -193,6 +193,22 @@ into `wazuh-events-v5-security`, and a `falco` detector turns them into findings
 | Emergency, Alert, Critical | critical |
 | Error, Warning | high |
 | Notice | medium |
+
+On top of the stock Falco rules, [`values.yaml`](infrastructure/controllers/falco/values.yaml) adds four
+Critical rules evaluated when a container starts, which the audit log cannot see because it keeps the pod
+spec unindexed:
+
+| Falco rule | Fires when a container starts |
+|---|---|
+| Privileged container started | privileged |
+| Container with host namespaces started | in the host network, PID or IPC namespace |
+| Container with sensitive host mount started | with `/`, `/etc`, `/proc`, `/sys`, `/dev`, a container runtime socket or kubelet credentials mounted |
+| Container from an untrusted image started | from an image outside the allowlist of what this cluster runs |
+
+The GKE system DaemonSets need privileges, host namespaces and host mounts, so the first three rules skip
+`kube-system` containers whose image comes from the GKE release registry, and Falco's own containers; any
+other image in those namespaces still alerts. An image from a new registry alerts until it joins
+`wazuh_trusted_images`.
 
 A Falco finding reaches Slack titled with the Falco rule (for example *Read sensitive file untrusted*),
 then the Wazuh rule that raised it (*Falco runtime threat: Warning*), the node, the process and user, the

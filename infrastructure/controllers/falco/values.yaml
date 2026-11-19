@@ -77,3 +77,90 @@ falcosidekick:
           configMapKeyRef:
             name: falcosidekick-gcp
             key: project_id
+
+# Container launch rules escalated to Critical, so they reach Slack as critical Wazuh findings.
+# Exceptions match on namespace and image together: a pod in kube-system with another image still alerts.
+customRules:
+  wazuh-container-launch.yaml: |-
+    - macro: wazuh_container_started
+      condition: (spawned_process and proc.vpid=1 and container and container.image.repository != "")
+
+    - macro: wazuh_gke_system_container
+      condition: >
+        (k8s.ns.name = kube-system
+         and (container.image.repository contains "-artifactregistry.gcr.io/gke-release/"
+              or container.image.repository startswith "gke.gcr.io/"))
+
+    - macro: wazuh_falco_container
+      condition: >
+        (k8s.ns.name = falco
+         and container.image.repository in (docker.io/falcosecurity/falco, docker.io/falcosecurity/falcoctl))
+
+    - list: wazuh_trusted_images
+      items:
+        - docker.io/wazuh/wazuh-indexer
+        - docker.io/wazuh/wazuh-manager
+        - docker.io/wazuh/wazuh-dashboard
+        - docker.io/curlimages/curl
+        - docker.io/library/python
+        - docker.io/falcosecurity/falco
+        - docker.io/falcosecurity/falcoctl
+        - docker.io/falcosecurity/falcosidekick
+        - quay.io/argoproj/argocd
+        - ecr-public.aws.com/docker/library/redis
+        - quay.io/jetstack/cert-manager-controller
+        - quay.io/jetstack/cert-manager-cainjector
+        - quay.io/jetstack/cert-manager-webhook
+        - ghcr.io/external-secrets/external-secrets
+
+    - macro: wazuh_trusted_image
+      condition: >
+        (container.image.repository in (wazuh_trusted_images)
+         or container.image.repository contains "-artifactregistry.gcr.io/gke-release/"
+         or container.image.repository startswith "gke.gcr.io/"
+         or container.image.repository startswith "registry.k8s.io/"
+         or (container.image.repository startswith "asia-southeast2-docker.pkg.dev/"
+             and container.image.repository endswith "/staging-siem/wazuh-gcp-collector"))
+
+    - macro: wazuh_sensitive_host_mount
+      condition: >
+        (container.mount[/] != none or container.mount[/etc] != none or container.mount[/proc] != none
+         or container.mount[/sys] != none or container.mount[/dev] != none or container.mount[/boot] != none
+         or container.mount[/root] != none or container.mount[/home] != none
+         or container.mount[/run] != none or container.mount[/var/run] != none
+         or container.mount[/run/containerd] != none or container.mount[/run/containerd/containerd.sock] != none
+         or container.mount[/var/run/docker.sock] != none or container.mount[/var/lib/containerd] != none
+         or container.mount[/var/lib/kubelet] != none or container.mount[/var/lib/kubelet/pki] != none
+         or container.mount[/var/lib/kubelet/kubeconfig] != none or container.mount[/etc/kubernetes] != none
+         or container.mount[/home/kubernetes] != none)
+
+    - rule: Privileged container started
+      desc: A container started in privileged mode outside the GKE system DaemonSets and Falco; it can reach the host and escape the container.
+      condition: wazuh_container_started and container.privileged=true and not wazuh_gke_system_container and not wazuh_falco_container
+      output: Privileged container started (image=%container.image.repository:%container.image.tag ns=%k8s.ns.name pod=%k8s.pod.name command=%proc.cmdline)
+      priority: CRITICAL
+      tags: [container, mitre_privilege_escalation, T1611]
+
+    - rule: Container with host namespaces started
+      desc: A container started in the host network, PID or IPC namespace outside the GKE system DaemonSets and Falco.
+      condition: >
+        wazuh_container_started
+        and (container.host_network=true or container.host_pid=true or container.host_ipc=true)
+        and not wazuh_gke_system_container and not wazuh_falco_container
+      output: Container with host namespaces started (host_network=%container.host_network host_pid=%container.host_pid host_ipc=%container.host_ipc image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, mitre_privilege_escalation, T1611]
+
+    - rule: Container with sensitive host mount started
+      desc: A container started with a sensitive host path mounted (the root filesystem, /etc, /proc, a container runtime socket, kubelet credentials) outside the GKE system DaemonSets and Falco.
+      condition: wazuh_container_started and wazuh_sensitive_host_mount and not wazuh_gke_system_container and not wazuh_falco_container
+      output: Container with sensitive host mount started (mounts=%container.mounts image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, mitre_privilege_escalation, T1611]
+
+    - rule: Container from an untrusted image started
+      desc: A container started from an image outside the registries and images this cluster runs (GKE, the SIEM Artifact Registry, Wazuh, Argo CD, cert-manager, External Secrets, Falco and the hook images).
+      condition: wazuh_container_started and not wazuh_trusted_image
+      output: Container from an untrusted image started (image=%container.image.repository:%container.image.tag ns=%k8s.ns.name pod=%k8s.pod.name command=%proc.cmdline)
+      priority: CRITICAL
+      tags: [container, mitre_execution, T1610]
