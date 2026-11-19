@@ -342,6 +342,53 @@ customRules:
       priority: ERROR
       tags: [container, process, mitre_defense_evasion, T1140]
 
+    - rule: Credential file read in container
+      desc: A cloud, cluster, registry or Git credential file, or an SSH private key, was opened for reading inside a container outside the platform workloads.
+      condition: >
+        evt.type in (open, openat, openat2) and evt.is_open_read = true and container and not wazuh_platform_container
+        and (fd.name contains "/.config/gcloud/" or fd.name endswith "/.kube/config" or fd.name endswith "/.aws/credentials"
+             or fd.name endswith "/.docker/config.json" or fd.name endswith "/.git-credentials"
+             or fd.name contains "/.ssh/id_")
+      output: Credential file read in container (file=%fd.name process=%proc.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, filesystem, mitre_credential_access, T1552.001]
+
+    - rule: Setuid or setgid bit set in container
+      desc: A file was given the setuid or setgid bit inside a container, how a backdoor keeps root after the attacker drops to a normal user.
+      condition: >
+        evt.type in (chmod, fchmod, fchmodat) and container and not wazuh_platform_container
+        and (evt.arg.mode contains "S_ISUID" or evt.arg.mode contains "S_ISGID")
+      output: Setuid or setgid bit set in container (mode=%evt.arg.mode file=%evt.arg.filename process=%proc.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, filesystem, mitre_privilege_escalation, T1548.001]
+
+    - rule: Mount or namespace tool in container
+      desc: mount, umount, nsenter or unshare ran inside a container outside the GKE system and platform workloads, the tools of a container escape.
+      condition: >
+        spawned_process and container and not wazuh_platform_container
+        and proc.name in (mount, umount, nsenter, unshare)
+      output: Mount or namespace tool in container (command=%proc.cmdline parent=%proc.pname image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, process, mitre_privilege_escalation, T1611]
+
+    - rule: SSH or remote copy client in container
+      desc: An SSH, SCP, SFTP or rsync client ran inside a container, how an attacker moves to other hosts or pulls data out.
+      condition: >
+        spawned_process and container and not wazuh_platform_container
+        and proc.name in (ssh, scp, sftp, sshpass, rsync, dbclient)
+      output: SSH or remote copy client in container (command=%proc.cmdline parent=%proc.pname image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, network, mitre_lateral_movement, T1021.004]
+
+    - rule: Environment of another process read in container
+      desc: The environment of another process (/proc/<pid>/environ) was read inside a container, where tokens and passwords passed as variables are kept.
+      condition: >
+        evt.type in (open, openat, openat2) and evt.is_open_read = true and container and not wazuh_platform_container
+        and fd.name glob "/proc/*/environ" and not fd.name in (/proc/self/environ, /proc/thread-self/environ)
+      output: Environment of another process read in container (file=%fd.name process=%proc.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, filesystem, mitre_credential_access, T1552.007]
+
     - rule: Linux Kernel Module Injection Detected
       override:
         priority: replace
