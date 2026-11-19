@@ -956,6 +956,49 @@
           "Steal Application Access Token"
         ]
       }
+    },
+    {
+      "title": "GKE long-lived service account token created",
+      "level": "critical",
+      "trusted": false,
+      "description": "The controller manager wrote a token into a Secret of type kubernetes.io/service-account-token: someone created a service account token that never expires, a classic way to keep access. The Secret is in orchestrator.namespace and the creation is the secrets.create just before.",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": "io.k8s.core.v1.secrets.update",
+        "user.name": "system:kube-controller-manager"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1528",
+          "Steal Application Access Token"
+        ]
+      }
+    },
+    {
+      "title": "GKE DaemonSet or CronJob created outside GitOps",
+      "level": "critical",
+      "description": "A DaemonSet (runs on every node) or CronJob (runs again on a schedule) was created directly instead of through Argo CD: the usual shapes of a cluster-wide backdoor or scheduled persistence.",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.apps.v1.daemonsets.create",
+          "io.k8s.batch.v1.cronjobs.create"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1053",
+          "Scheduled Task/Job"
+        ]
+      }
     }
   ]
 }

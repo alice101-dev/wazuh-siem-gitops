@@ -2,7 +2,7 @@
   "integration": {
     "title": "gke-requests",
     "category": "security",
-    "description": "Request bodies of GKE audit entries for workload and role binding writes: privileged pods, host namespaces, host paths, SYS_ADMIN and bindings to admin roles."
+    "description": "Request bodies of GKE audit entries for workload and RBAC writes and impersonated calls: privileged pods, host namespaces, host paths and ports, dangerous capabilities, admin bindings, escalating roles and impersonation."
   },
   "detector": {
     "name": "gke-requests",
@@ -18,7 +18,7 @@
       "parents": [
         "decoder/custom-wazuh-message/0"
       ],
-      "description": "Reads the request body of a GKE audit entry for a workload or role binding write and tags what makes it dangerous.",
+      "description": "Reads the request body of a GKE audit entry for a workload or RBAC write, or an impersonated call, and tags what makes it dangerous. Only the request is read: the response holds the whole object, also for a patch that changed nothing dangerous.",
       "check": "$_tmp_json.integration == 'gcp' AND $_tmp_json.gcp.protoPayload.serviceName == 'k8s.io'",
       "normalize": [
         {
@@ -70,6 +70,9 @@
             },
             {
               "message": "$_gke.protoPayload.resourceName"
+            },
+            {
+              "user.target.name": "$_gke.protoPayload.authenticationInfo.authoritySelector"
             }
           ]
         },
@@ -82,7 +85,7 @@
           ]
         },
         {
-          "check": "contains($event.original, '\"privileged\": true')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"privileged\": true.*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(privileged)"
@@ -90,7 +93,7 @@
           ]
         },
         {
-          "check": "contains($event.original, '\"hostNetwork\": true')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"hostNetwork\": true.*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(host_network)"
@@ -98,7 +101,7 @@
           ]
         },
         {
-          "check": "contains($event.original, '\"hostPID\": true')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"hostPID\": true.*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(host_pid)"
@@ -106,7 +109,7 @@
           ]
         },
         {
-          "check": "contains($event.original, '\"hostIPC\": true')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"hostIPC\": true.*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(host_ipc)"
@@ -114,7 +117,7 @@
           ]
         },
         {
-          "check": "contains($event.original, '\"hostPath\": {')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"hostPath\": [{].*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(host_path)"
@@ -122,7 +125,7 @@
           ]
         },
         {
-          "check": "contains($event.original, '\"SYS_ADMIN\"')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"add\": [[](\"[A-Z_]+\", )*\"(CAP_)?SYS_ADMIN\".*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(cap_sys_admin)"
@@ -130,10 +133,74 @@
           ]
         },
         {
-          "check": "regex_match($event.original, '\"roleRef\": [{][^}]*\"name\": \"(cluster-admin|admin|edit)\"')",
+          "check": "regex_match($event.original, '\"request\": [{].*\"add\": [[](\"[A-Z_]+\", )*\"(CAP_)?(NET_ADMIN|NET_RAW|SYS_PTRACE|SYS_MODULE|DAC_READ_SEARCH|SYS_RAWIO|BPF|PERFMON|ALL)\".*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(cap_dangerous)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"hostPort\": [0-9].*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(host_port)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"nodeName\": \".*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(node_name)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"shareProcessNamespace\": true.*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(share_pid)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"roleRef\": [{][^}]*\"name\": \"(cluster-admin|admin|edit)\".*\"requestMetadata\": [{]')",
           "map": [
             {
               "tags": "array_append(admin_role_binding)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"(verbs|resources|apiGroups)\": [[](\"[a-zA-Z0-9*/.-]*\", )*\"[*]\".*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(rbac_wildcard)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"verbs\": [[](\"[a-z*]+\", )*\"(escalate|bind|impersonate)\".*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(rbac_escalate)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"request\": [{].*\"resources\": [[](\"[a-z*/.-]+\", )*\"(secrets|pods/exec|pods/attach|pods/ephemeralcontainers|nodes/proxy|serviceaccounts/token|certificatesigningrequests/approval|mutatingwebhookconfigurations|validatingwebhookconfigurations)\".*\"requestMetadata\": [{]')",
+          "map": [
+            {
+              "tags": "array_append(rbac_sensitive)"
+            }
+          ]
+        },
+        {
+          "check": "exists($_gke.protoPayload.authenticationInfo.authoritySelector)",
+          "map": [
+            {
+              "tags": "array_append(impersonation)"
             }
           ]
         }
@@ -268,6 +335,124 @@
         "technique": [
           "T1098",
           "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GKE workload with a dangerous capability requested",
+      "level": "high",
+      "description": "A container with NET_ADMIN, NET_RAW, SYS_PTRACE, SYS_MODULE, DAC_READ_SEARCH, SYS_RAWIO, BPF, PERFMON or ALL capabilities was requested outside GitOps: sniffing, spoofing, reading other processes or loading kernel code.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": "cap_dangerous"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1611",
+          "Escape to Host"
+        ]
+      }
+    },
+    {
+      "title": "GKE workload pinned to a node or sharing host ports or processes",
+      "level": "high",
+      "description": "A pod or workload set nodeName (skipping the scheduler, as kubectl debug node does), a hostPort, or a shared process namespace, outside GitOps.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": [
+          "node_name",
+          "host_port",
+          "share_pid"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1611",
+          "Escape to Host"
+        ]
+      }
+    },
+    {
+      "title": "GKE RBAC role with wildcard permissions",
+      "level": "critical",
+      "description": "A Role or ClusterRole with * in its verbs, resources or API groups was created or changed outside GitOps.",
+      "selection": {
+        "event.code|startswith": "io.k8s.authorization.rbac.",
+        "tags": "rbac_wildcard"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GKE RBAC role allows privilege escalation",
+      "level": "critical",
+      "description": "A Role or ClusterRole granting escalate, bind or impersonate was created or changed outside GitOps: whoever holds it can give themselves any permission.",
+      "selection": {
+        "event.code|startswith": "io.k8s.authorization.rbac.",
+        "tags": "rbac_escalate"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GKE RBAC role grants sensitive access",
+      "level": "high",
+      "description": "A Role or ClusterRole granting secrets, pods/exec or attach, ephemeral containers, nodes/proxy, service account tokens, CSR approval or admission webhooks was created or changed outside GitOps.",
+      "selection": {
+        "event.code|startswith": "io.k8s.authorization.rbac.",
+        "tags": "rbac_sensitive"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GKE impersonation used",
+      "level": "high",
+      "description": "A Kubernetes API call was made with impersonation (kubectl --as): the caller acted as another user or service account, shown as user.target.name.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": "impersonation"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1134",
+          "Access Token Manipulation"
         ]
       }
     }

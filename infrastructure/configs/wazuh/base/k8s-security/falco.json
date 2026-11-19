@@ -16,8 +16,8 @@
     {
       "name": "decoder/custom-wazuh-message/0",
       "title": "Custom space root decoder",
-      "description": "Parses the JSON body of the events meant for the custom space (Falco alerts, the GKE audit entries of workload and role binding writes, and GKE network policy logs) and lets every other event go.",
-      "check": "(contains($event.original, 'wazuh_integration') AND contains($event.original, 'falco')) OR (contains($event.original, '\"serviceName\": \"k8s.io\"') AND regex_match($event.original, '\"methodName\": \"io[.]k8s[.](core[.]v1[.]pods|apps[.]v1[.](deployments|daemonsets|statefulsets|replicasets)|batch[.]v1[.](jobs|cronjobs)|authorization[.]rbac[.]v1[.](rolebindings|clusterrolebindings))[.](create|update|patch)\"')) OR (contains($event.original, '/logs/policy-action\"') AND contains($event.original, '\"disposition\"'))",
+      "description": "Parses the JSON body of the events meant for the custom space (Falco alerts, the GKE audit entries of workload and RBAC writes and of impersonated calls, and GKE network policy logs) and lets every other event go.",
+      "check": "(contains($event.original, 'wazuh_integration') AND contains($event.original, 'falco')) OR (contains($event.original, '\"serviceName\": \"k8s.io\"') AND (contains($event.original, '\"authoritySelector\"') OR regex_match($event.original, '\"methodName\": \"io[.]k8s[.](core[.]v1[.]pods|apps[.]v1[.](deployments|daemonsets|statefulsets|replicasets)|batch[.]v1[.](jobs|cronjobs)|authorization[.]rbac[.]v1[.](roles|clusterroles|rolebindings|clusterrolebindings))[.](create|update|patch)\"'))) OR (contains($event.original, '/logs/policy-action\"') AND contains($event.original, '\"disposition\"'))",
       "normalize": [
         {
           "map": [
