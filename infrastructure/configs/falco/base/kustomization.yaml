@@ -4,3 +4,4 @@ namespace: falco
 resources:
   - falcosidekick-gcp.yaml
   - network-policies.yaml
+  - canary.yaml

@@ -61,7 +61,8 @@
             "wazuh",
             "argocd",
             "cert-manager",
-            "external-secrets"
+            "external-secrets",
+            "falco"
           ]
         }
       },
@@ -93,7 +94,8 @@
           "wazuh",
           "argocd",
           "cert-manager",
-          "external-secrets"
+          "external-secrets",
+          "falco"
         ]
       },
       "mitre": {
@@ -205,8 +207,7 @@
           "wazuh",
           "argocd",
           "cert-manager",
-          "external-secrets",
-          "falco"
+          "external-secrets"
         ],
         "event.code": [
           "io.k8s.core.v1.pods.create",
@@ -259,6 +260,11 @@
           "T1525",
           "Implant Internal Image"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -283,6 +289,11 @@
           "T1552",
           "Unsecured Credentials"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -308,6 +319,11 @@
           "T1562",
           "Impair Defenses"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -332,6 +348,11 @@
           "T1562",
           "Impair Defenses"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -377,6 +398,11 @@
           "T1485",
           "Data Destruction"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -422,6 +448,32 @@
       }
     },
     {
+      "title": "GKE runtime security tampered outside GitOps",
+      "description": "An object of the falco namespace (the Falco DaemonSet, its rules ConfigMap, Falcosidekick, the canary, their NetworkPolicies or credentials) was created, changed or deleted outside Argo CD; stopping or blinding Falco is the first step of an attack that wants to go unseen.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "orchestrator.namespace": "falco",
+        "event.code|endswith": [
+          ".create",
+          ".update",
+          ".patch",
+          ".delete",
+          ".deletecollection"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
+    },
+    {
       "title": "GKE service exposed outside GitOps",
       "description": "A Service, Ingress or Gateway API route was created or changed outside GitOps, which can expose a workload to the network or the internet.",
       "level": "high",
@@ -451,6 +503,11 @@
           "T1133",
           "External Remote Services"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -477,6 +534,11 @@
           "T1098",
           "Account Manipulation"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {
@@ -503,6 +565,11 @@
           "T1098",
           "Account Manipulation"
         ]
+      },
+      "exclude": {
+        "falco_namespace": {
+          "orchestrator.namespace": "falco"
+        }
       }
     },
     {

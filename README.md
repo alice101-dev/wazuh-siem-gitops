@@ -121,6 +121,7 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Wazuh indexer health | the indexer cluster is not green | orange |
 | Wazuh indexer disk | a node disk is above 75% | orange |
 | Wazuh GCP log pipeline stalled | no GCP event is indexed for 15 minutes | bright red |
+| Falco runtime detection silent | no Falco canary reaches Wazuh for 30 minutes | bright red |
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
 
@@ -140,7 +141,7 @@ External Secrets and the enrollment hook, so what reaches Slack is a person or a
 | Rule | Level |
 |---|---|
 | Exec or attach into a pod | high |
-| Exec or attach into a pod of `kube-system`, `wazuh`, `argocd`, `cert-manager` or `external-secrets` | critical |
+| Exec or attach into a pod of `kube-system`, `wazuh`, `argocd`, `cert-manager`, `external-secrets` or `falco` | critical |
 | Ephemeral container added to a pod (`kubectl debug`) | high |
 | Port-forward to a pod | medium |
 | Pod or workload controller created outside GitOps | high |
@@ -152,6 +153,7 @@ External Secrets and the enrollment hook, so what reaches Slack is a person or a
 | Namespace changed or deleted outside GitOps | high |
 | PersistentVolumeClaim or PersistentVolume deleted | high |
 | Workload, Service, ServiceAccount or ConfigMap deleted in a system or security namespace | high |
+| Any object of the `falco` namespace created, changed or deleted outside GitOps | critical |
 | Service, Ingress or Gateway API route created or changed outside GitOps | high |
 | Role or ClusterRole created or changed | high |
 | RoleBinding or ClusterRoleBinding created or changed | high |
@@ -212,10 +214,18 @@ spec unindexed:
 | Container with sensitive host mount started | with `/`, `/etc`, `/proc`, `/sys`, `/dev`, a container runtime socket or kubelet credentials mounted |
 | Container from an untrusted image started | from an image outside the allowlist of what this cluster runs |
 
+The stock rule *Redirect STDOUT/STDIN to Network Connection in Container*, which is how a reverse shell
+looks, is raised from Notice to Critical.
+
 The GKE system DaemonSets need privileges, host namespaces and host mounts, so the first three rules skip
 `kube-system` containers whose image comes from the GKE release registry, and Falco's own containers; any
 other image in those namespaces still alerts. An image from a new registry alerts until it joins
 `wazuh_trusted_images`.
+
+A `falco-canary` CronJob runs a marked command every 10 minutes; Falco turns it into a *Falco canary*
+event that travels the whole path to Wazuh, and the monitor *Falco runtime detection silent* alerts when no
+canary arrives for 30 minutes, so a Falco that is stopped, blinded or cut off does not go unnoticed. The
+canary is indexed but raises no finding.
 
 A Falco finding reaches Slack titled with the Falco rule (for example *Read sensitive file untrusted*),
 then the Wazuh rule that raised it (*Falco runtime threat: Warning*), the node, the process and user, the

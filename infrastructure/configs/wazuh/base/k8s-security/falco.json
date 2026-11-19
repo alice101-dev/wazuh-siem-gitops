@@ -173,6 +173,11 @@
         "log.level": [
           "Notice"
         ]
+      },
+      "exclude": {
+        "canary": {
+          "rule.name": "Falco canary"
+        }
       }
     }
   ]

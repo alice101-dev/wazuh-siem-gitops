@@ -34,6 +34,7 @@ configMapGenerator:
       - alerting/cluster-health-monitor.json
       - alerting/disk-usage-monitor.json
       - alerting/pipeline-freshness-monitor.json
+      - alerting/falco-canary-monitor.json
 images:
   - name: wazuh/wazuh-indexer
     newTag: 5.0.0-rc2
