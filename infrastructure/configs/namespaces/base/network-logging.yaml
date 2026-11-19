@@ -1,0 +1,16 @@
+# GKE Dataplane V2 logs every connection a NetworkPolicy denies (policy-action log), for scan detection.
+# The object is created by the GKE addon manager (EnsureExists); Argo CD only sets the spec.
+apiVersion: networking.gke.io/v1alpha1
+kind: NetworkLogging
+metadata:
+  name: default
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false,ServerSideApply=true
+spec:
+  cluster:
+    allow:
+      log: false
+      delegate: false
+    deny:
+      log: true
+      delegate: false
