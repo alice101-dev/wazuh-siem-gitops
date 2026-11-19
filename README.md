@@ -279,7 +279,7 @@ tools, `GLIBC_TUNABLES`):
 | Create files below dev | Error | files hidden in `/dev` |
 | Backdoored library loaded into SSHD (CVE-2024-3094) | Warning | the xz backdoor |
 | Change thread namespace, BPF Program Not Profiled | Notice | `setns` and BPF programs loaded outside the platform |
-| Exfiltrating Artifacts via Kubernetes Control Plane | Notice | `kubectl cp` out of a container |
+| Exfiltrating Artifacts via Kubernetes Control Plane | Error (raised from Notice) | `kubectl cp` out of a container |
 | Potential Local Privilege Escalation via Environment Variables Misuse | Notice | `GLIBC_TUNABLES` (Looney Tunables) |
 | Launch Ingress Remote File Copy Tools in Container | Notice | `curl` or `wget` fetching files into a container |
 | User mgmt binaries, Basic Interactive Reconnaissance | Notice | account tools on a node, `whoami`/`id`-style recon in a terminal |
@@ -392,7 +392,7 @@ resources (the Google Cloud rules), removed right after.
 | Node disk read | `head -c 512 /dev/sda` from a privileged pod | Privileged Container Device Access | critical |
 | Host files through a mount | `cat /host/etc/os-release` from a pod with `/` mounted at `/host` | Container Access to Host Sensitive Paths | high |
 | Files hidden in /dev | `touch /dev/x` | Create files below dev | high |
-| Data copied out | `kubectl cp <pod>:/data/file .` | Exfiltrating Artifacts via Kubernetes Control Plane | medium |
+| Data copied out | `kubectl cp <pod>:/data/file .` | Exfiltrating Artifacts via Kubernetes Control Plane | high |
 | Tool download | `wget`, `curl -o` in a container | Launch Ingress Remote File Copy Tools in Container | medium |
 
 ### Network (GKE network policy log, `gke-network-policy`)
