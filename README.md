@@ -1,20 +1,27 @@
 # wazuh-siem-gitops
 
-A **Wazuh 5** SIEM on GKE for the audit and security logs of a Google Cloud project. Everything is
-declared in this repository: **Terraform** builds the Google Cloud side, **Argo CD** reconciles every object
-in the cluster, including the Wazuh configuration, certificates, credentials, detection content and alert
-monitors. No service account key exists anywhere: Google Cloud access goes through **GKE Workload Identity**.
+A **Wazuh 5** SIEM on GKE for the audit and security logs of a Google Cloud project, the Kubernetes API
+audit log of the cluster, and **Falco** runtime alerts from its nodes. Everything is declared in this
+repository: **Terraform** builds the Google Cloud side, **Argo CD** reconciles every object in the cluster,
+including the Wazuh configuration, certificates, credentials, detection content and alert monitors. No
+service account key exists anywhere: Google Cloud access goes through **GKE Workload Identity**.
 
 ## Highlights
 
-- **Keyless.** The Wazuh GCP collector pulls Pub/Sub with Workload Identity; External Secrets reads
-  Secret Manager the same way. No JSON key is created, stored or mounted.
+- **Keyless.** The Wazuh GCP collector pulls Pub/Sub with Workload Identity; Falcosidekick publishes to it
+  and External Secrets reads Secret Manager the same way. No JSON key is created, stored or mounted.
+- **Three layers of detection.** Google Cloud audit logs with the standard Wazuh ruleset, the GKE
+  Kubernetes audit log with custom Sigma rules (exec into pods, RBAC, secrets, workloads outside GitOps,
+  admission webhooks), and Falco eBPF on every node for what runs inside containers (sensitive file reads,
+  reverse shells, privileged or host-mounted containers, untrusted images).
 - **Fully GitOps.** Wazuh configuration, PKI, generated passwords, agent enrollment, ruleset activation,
-  Slack channel and alert monitors are all reconciled from Git; nothing is clicked in the dashboard.
+  custom decoders, rules and detectors, the Slack channel, alert monitors and the security dashboard are all
+  reconciled from Git; nothing is clicked in the dashboard.
 - **Scale-out.** Dedicated indexer cluster-manager and data nodes, a manager master with workers, and node
   certificates with wildcard SANs, so adding replicas needs no new certificate.
 - **Encrypted with Cloud KMS.** Kubernetes Secrets in etcd, node boot disks and every persistent volume.
-- **Alerts from Wazuh only**, to Slack, colored by level, plus alerts on the health of the SIEM itself.
+- **Alerts from Wazuh only**, to Slack, colored by level and titled with what happened, for cloud, Kubernetes
+  and Falco findings alike, plus alerts on the health of the SIEM itself.
 
 ## Topology
 
