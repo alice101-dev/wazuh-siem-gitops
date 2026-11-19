@@ -18,7 +18,7 @@ k8s_data_access_noise_filter = <<-EOT
   log_id("cloudaudit.googleapis.com/data_access") AND resource.type="k8s_cluster"
   AND (
     NOT protoPayload.methodName=~"^io\.k8s\.core\.v1\.(secrets\.(get|list|watch)|nodes\.proxy\..+|serviceaccounts\.token\.create)$"
-    OR protoPayload.authenticationInfo.principalEmail=~"^(system:(node:|kube-|apiserver|gke-|gcp-|anet-|pdcsi-|addon-manager$|cloud-controller-manager|cluster-autoscaler|serviceaccount:(kube-system|gke-[a-z-]+|gmp-system|argocd|cert-manager|external-secrets|falco):|serviceaccount:wazuh:wazuh-enrollment$)|kubelet-nodepool-bootstrap$|.+@container-engine-robot\.iam\.gserviceaccount\.com$)"
+    OR protoPayload.authenticationInfo.principalEmail=~"^(system:(node:|kube-|apiserver|gke-|gcp-|anet-|pdcsi-|addon-manager$|kubestore-collector$|cloud-controller-manager|cluster-autoscaler|serviceaccount:(kube-system|gke-[a-z-]+|gmp-system|argocd|cert-manager|external-secrets|falco):|serviceaccount:wazuh:wazuh-enrollment$)|kubelet-nodepool-bootstrap$|.+@container-engine-robot\.iam\.gserviceaccount\.com$)"
   )
 EOT
 

@@ -21,6 +21,7 @@
         "system:gcp-",
         "system:anet-",
         "system:pdcsi-",
+        "system:kubestore-collector",
         "system:cloud-controller-manager",
         "system:cluster-autoscaler",
         "system:serviceaccount:kube-system:",
