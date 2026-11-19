@@ -462,6 +462,11 @@ customRules:
         condition: append
 
     - rule: BPF Program Not Profiled
+      condition: and not wazuh_platform_container and not proc.name in (runc, containerd, containerd-shim, containerd-shim-runc-v2)
+      override:
+        condition: append
+
+    - rule: Potential Local Privilege Escalation via Environment Variables Misuse
       condition: and not wazuh_platform_container
       override:
         condition: append
