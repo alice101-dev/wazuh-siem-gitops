@@ -340,21 +340,26 @@ resources (the Google Cloud rules), removed right after.
 
 | Technique | Try it | Rule | Level |
 |---|---|---|---|
-| Service account key | `gcloud iam service-accounts keys create` | GCP service account key created | critical |
+| Service account key | `gcloud iam service-accounts keys create` / `keys upload` | GCP service account key created | critical |
 | Privilege escalation | `gcloud projects add-iam-policy-binding … --role roles/editor` | GCP project IAM policy changed | high |
 | Impersonation path | grant `roles/iam.serviceAccountTokenCreator` on a service account | GCP service account IAM policy changed | high |
 | Impersonation | `gcloud auth print-access-token --impersonate-service-account` | GCP service account impersonated | high |
 | Port opened to the internet | `gcloud compute firewall-rules create … --source-ranges 0.0.0.0/0` | GCP firewall rule created or changed | high |
 | Bucket made public | `gcloud storage buckets add-iam-policy-binding … --member allUsers` | GCP storage bucket IAM policy changed | high |
-| Logs redirected | `gcloud logging sinks create` | GCP log sink created or changed | high |
-| Logs cut off | `gcloud logging sinks delete` | Cloud services audit logging disabled (standard) | high |
+| Logs redirected or cut off | `gcloud logging sinks create` / `update` / `delete` | GCP log sink created, changed or deleted | high |
+| Logs dropped before storage | a log exclusion (`POST …/v2/projects/<p>/exclusions`), `gcloud logging buckets update` | GCP log exclusion or log bucket changed | critical |
 | Secret read | `gcloud secrets versions access` by anyone but External Secrets | GCP secret read outside External Secrets | high |
-| Encryption key destroyed | `gcloud kms keys versions destroy` | GCP KMS key version destroyed | critical |
+| Encryption key disabled or destroyed | `gcloud kms keys versions disable` / `destroy` | GCP KMS key version disabled or destroyed | critical |
+| Encryption key access | `gcloud kms keys add-iam-policy-binding` | GCP KMS key IAM policy changed | high |
 | SSH keys on every VM | `gcloud compute project-info add-metadata --metadata ssh-keys=…` | GCP instance or project metadata changed | high |
 | Long-lived storage credential | `gcloud storage hmac create` | GCP storage HMAC key created | critical |
 | SIEM log path diverted or cut | create, change or delete a Pub/Sub topic or subscription | GCP Pub/Sub topic or subscription changed | high |
 | Services switched on or off | `gcloud services enable` / `disable` | GCP API enabled or disabled | high |
-| Service account created or deleted | `gcloud iam service-accounts create` / `delete` | GCP service account created / deleted or disabled (standard) | medium |
+| New identity or role | `gcloud iam service-accounts create`, `gcloud iam roles create` | GCP custom role or service account created | high |
+| Outside identity as a service account | `gcloud iam workload-identity-pools create`, `providers create-oidc` | GCP workload identity federation changed | critical |
+| Cluster defences changed | `gcloud container clusters update` (endpoint access, authorized networks, logging, network policy, legacy ABAC) or `delete` | GKE cluster configuration changed | critical |
+| Capacity for crypto mining | `gcloud compute instances create`, `gcloud container node-pools create` / `resize` | GCP compute capacity added | high |
+| Traffic redirected or networks bridged | `gcloud compute routes create`, `routers create`, `networks peerings create`, `subnets update` | GCP VPC routing or peering changed | high |
 
 ### Not detected
 
