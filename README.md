@@ -269,6 +269,7 @@ resources (the Google Cloud rules), removed right after.
 | Service exposed | `kubectl expose` / `kubectl create service` | GKE service exposed outside GitOps | high |
 | Data destroyed | `kubectl delete pvc x` | GKE persistent volume deleted outside GitOps | high |
 | Runtime security stopped | `kubectl -n falco delete daemonset falco` | GKE runtime security tampered outside GitOps | critical |
+| Events wiped | `kubectl delete --raw /apis/events.k8s.io/v1/namespaces/<ns>/events` | GKE events deleted | high |
 | Impersonation (`kubectl --as`) | any of the above with `--as=system:serviceaccount:argocd:argocd-application-controller` | the same rules: the audit log keeps the real caller | as above |
 
 ### Inside containers (Falco, `falco`)
@@ -293,6 +294,16 @@ resources (the Google Cloud rules), removed right after.
 | Escape to the node | `nsenter -t 1 -m -u -i -n -p` from a privileged pod, then read a host file | Privileged container started, Read sensitive file untrusted | critical, high |
 | Untrusted image | `kubectl run x --image=alpine` | Container from an untrusted image started | critical |
 | Falco silenced | stop Falco or cut its path to Wazuh for 30 minutes | Falco runtime detection silent (monitor) | critical |
+| Crypto miner | run `xmrig` or anything with `stratum+tcp://`, `--donate-level` | Crypto miner launched in container | critical |
+| Mining pool traffic | connect to port 3333, 5555, 7777, 14444 and other pool ports | Outbound connection to a mining pool port | critical |
+| Cluster or runtime client in a pod | `kubectl`, `crictl`, `ctr`, `docker`, `peirates` inside a container | Kubernetes or container runtime client in container | high |
+| Network reconnaissance | `nmap`, `masscan`, `tcpdump`, `socat` inside a container | Network reconnaissance tool in container | high |
+| Kubelet API | `curl -k https://<node-ip>:10250/pods` from a pod | Contact kubelet API from container | critical |
+| Tokens of every pod on the node | read `/var/lib/kubelet/pods/*/volumes/kubernetes.io~projected/*/token` through a host mount | Read service account token of another pod | critical |
+| Backdoor account, SSH key or cron job | write `/etc/passwd`, `~/.ssh/authorized_keys`, `/etc/crontabs/*` | Persistence file modified in container | high |
+| Obfuscated payload | `echo <b64> \| base64 -d \| sh` | Base64 decoding in container | high |
+| Execution from shared memory | run a binary copied to `/dev/shm` | Execution from /dev/shm | high |
+| Kernel module | `insmod`, `modprobe` from a privileged pod | Linux Kernel Module Injection Detected | critical |
 
 ### Google Cloud (audit logs, `gcp-security` and the standard `gcp` rules)
 
@@ -308,6 +319,10 @@ resources (the Google Cloud rules), removed right after.
 | Logs cut off | `gcloud logging sinks delete` | Cloud services audit logging disabled (standard) | high |
 | Secret read | `gcloud secrets versions access` by anyone but External Secrets | GCP secret read outside External Secrets | high |
 | Encryption key destroyed | `gcloud kms keys versions destroy` | GCP KMS key version destroyed | critical |
+| SSH keys on every VM | `gcloud compute project-info add-metadata --metadata ssh-keys=…` | GCP instance or project metadata changed | high |
+| Long-lived storage credential | `gcloud storage hmac create` | GCP storage HMAC key created | critical |
+| SIEM log path diverted or cut | create, change or delete a Pub/Sub topic or subscription | GCP Pub/Sub topic or subscription changed | high |
+| Services switched on or off | `gcloud services enable` / `disable` | GCP API enabled or disabled | high |
 | Service account created or deleted | `gcloud iam service-accounts create` / `delete` | GCP service account created / deleted or disabled (standard) | medium |
 
 ### Not detected
@@ -319,6 +334,10 @@ resources (the Google Cloud rules), removed right after.
 - Port scans inside the cluster: no rule; the default-deny NetworkPolicies of `wazuh` and `falco` block them.
 - `cluster-admin` versus a lesser role in a new binding: the `roleRef` is unindexed, so every binding made
   outside GitOps is high.
+- Events deleted one by one (`kubectl delete events --all`) or through the core API collection: GKE audits
+  only the `events.k8s.io` collection delete.
+- Events indexed while a detector is rebuilt, which happens when its rules change, can be skipped by that
+  detector run.
 
 ## Repository layout
 
