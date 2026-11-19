@@ -123,25 +123,43 @@ Logs, and the same sink that carries the Google Cloud audit logs brings the Admi
 those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
 promotes them draft → test → custom and points a Ruleset Management detector of the same name at
 `wazuh-events-v5-cloud-services`; a rule removed from the file is deleted. Every rule except the anonymous
-one ignores the GKE system components, the cluster controllers, Argo CD, cert-manager and External Secrets,
-so what reaches Slack is a person or a workload acting on the API:
+one ignores the API server, the GKE system components, the cluster controllers, Argo CD, cert-manager,
+External Secrets and the enrollment hook, so what reaches Slack is a person or a workload acting on the API:
 
 | Rule | Level |
 |---|---|
 | Exec or attach into a pod | high |
+| Exec or attach into a pod of `kube-system`, `wazuh`, `argocd`, `cert-manager` or `external-secrets` | critical |
 | Ephemeral container added to a pod (`kubectl debug`) | high |
+| Port-forward to a pod | medium |
 | Pod or workload controller created outside GitOps | high |
+| Pod or workload controller created in `kube-system` | critical |
+| Pod or workload controller patched or updated outside GitOps | high |
+| Secret created, changed or deleted outside GitOps | high |
+| `kube-system` ConfigMap created, changed or deleted | high |
+| NetworkPolicy created, changed or deleted outside GitOps | high |
+| Namespace changed or deleted outside GitOps | high |
+| PersistentVolumeClaim or PersistentVolume deleted | high |
+| Workload, Service, ServiceAccount or ConfigMap deleted in a system or security namespace | high |
+| Service, Ingress or Gateway API route created or changed outside GitOps | high |
 | Role or ClusterRole created or changed | high |
 | RoleBinding or ClusterRoleBinding created or changed | high |
 | Service account created in `kube-system` | high |
+| Write denied to a workload service account (a pod probing its permissions) | high |
+| Write denied to a user | medium |
+| Write from curl, wget, a Python HTTP library or a Kubernetes attack tool | high |
 | Certificate signing request created | high |
 | Certificate signing request approved | critical |
 | Admission webhook created, changed or deleted | high |
+| APIService (aggregated API) created or changed | critical |
+| CustomResourceDefinition created, changed or deleted outside GitOps | high |
 | Write accepted from an anonymous user | critical |
 
 Admin Activity has no reads and no TokenRequests, and the request body stays in the unindexed
 `event.original`, so listing secrets, `nodes/proxy`, service account tokens and privileged or `hostPath`
-pods are not detected; a pod created outside GitOps is, whatever its spec.
+pods are not detected; a pod created outside GitOps is, whatever its spec. A stolen service account
+token cannot be replayed from outside: the DNS endpoint accepts Google IAM credentials only and the IP
+endpoint only the node subnet.
 
 The same hook writes the **GKE Kubernetes security** dashboard: findings by level, rule and time, the
 actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service

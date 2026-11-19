@@ -14,6 +14,7 @@
       "user.name|startswith": [
         "system:node:",
         "system:kube-",
+        "system:apiserver",
         "system:gke-",
         "system:gcp-",
         "system:anet-",
@@ -30,8 +31,8 @@
     "trusted_robot": {
       "user.name|endswith": "@container-engine-robot.iam.gserviceaccount.com"
     },
-    "trusted_bootstrap": {
-      "user.name": "kubelet-nodepool-bootstrap"
+    "trusted_exact": {
+      "user.name": ["kubelet-nodepool-bootstrap", "system:serviceaccount:wazuh:wazuh-enrollment"]
     }
   },
   "rules": [
@@ -47,6 +48,25 @@
           "io.k8s.core.v1.pods.attach.create",
           "io.k8s.core.v1.pods.attach.get"
         ]
+      },
+      "exclude": {
+        "protected_namespace": { "orchestrator.namespace": ["kube-system", "wazuh", "argocd", "cert-manager", "external-secrets"] }
+      },
+      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
+    },
+    {
+      "title": "GKE exec or attach into a system or security pod",
+      "description": "An exec or attach session was opened into a pod of kube-system, the SIEM or the GitOps and secret controllers, where tokens and credentials of the whole cluster live.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.pods.exec.create",
+          "io.k8s.core.v1.pods.exec.get",
+          "io.k8s.core.v1.pods.attach.create",
+          "io.k8s.core.v1.pods.attach.get"
+        ],
+        "orchestrator.namespace": ["kube-system", "wazuh", "argocd", "cert-manager", "external-secrets"]
       },
       "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
     },
@@ -64,6 +84,19 @@
       "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1609", "Container Administration Command"] }
     },
     {
+      "title": "GKE port-forward to a pod",
+      "description": "A port-forward tunnel was opened to a pod. Expected when an operator opens the Wazuh dashboard; from anyone else it is a tunnel into the cluster network.",
+      "level": "medium",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.pods.portforward.create",
+          "io.k8s.core.v1.pods.portforward.get"
+        ]
+      },
+      "mitre": { "tactic": ["TA0011", "Command and Control"], "technique": ["T1572", "Protocol Tunneling"] }
+    },
+    {
       "title": "GKE workload created outside GitOps",
       "description": "A pod or workload controller was created directly instead of through Argo CD, for example with kubectl run or kubectl apply.",
       "level": "high",
@@ -79,7 +112,172 @@
           "io.k8s.batch.v1.cronjobs.create"
         ]
       },
+      "exclude": {
+        "system_namespace": { "orchestrator.namespace": "kube-system" }
+      },
       "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1610", "Deploy Container"] }
+    },
+    {
+      "title": "GKE workload created in kube-system outside GitOps",
+      "description": "A pod or workload controller was created in kube-system by a principal other than the GKE system components, a common place to hide a privileged backdoor.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "orchestrator.namespace": "kube-system",
+        "event.code": [
+          "io.k8s.core.v1.pods.create",
+          "io.k8s.apps.v1.deployments.create",
+          "io.k8s.apps.v1.daemonsets.create",
+          "io.k8s.apps.v1.statefulsets.create",
+          "io.k8s.apps.v1.replicasets.create",
+          "io.k8s.batch.v1.jobs.create",
+          "io.k8s.batch.v1.cronjobs.create"
+        ]
+      },
+      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1610", "Deploy Container"] }
+    },
+    {
+      "title": "GKE workload modified outside GitOps",
+      "description": "A running pod or workload controller was patched or updated directly, for example kubectl set image, kubectl edit or kubectl rollout restart, which can swap the image or add privileges.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.pods.patch",
+          "io.k8s.core.v1.pods.update",
+          "io.k8s.apps.v1.deployments.patch",
+          "io.k8s.apps.v1.deployments.update",
+          "io.k8s.apps.v1.daemonsets.patch",
+          "io.k8s.apps.v1.daemonsets.update",
+          "io.k8s.apps.v1.statefulsets.patch",
+          "io.k8s.apps.v1.statefulsets.update",
+          "io.k8s.apps.v1.replicasets.patch",
+          "io.k8s.apps.v1.replicasets.update",
+          "io.k8s.batch.v1.cronjobs.patch",
+          "io.k8s.batch.v1.cronjobs.update"
+        ]
+      },
+      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1525", "Implant Internal Image"] }
+    },
+    {
+      "title": "GKE secret changed outside GitOps",
+      "description": "A Secret was created, changed or deleted by a principal other than External Secrets, cert-manager and the cluster controllers.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.secrets.create",
+          "io.k8s.core.v1.secrets.update",
+          "io.k8s.core.v1.secrets.patch",
+          "io.k8s.core.v1.secrets.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0006", "Credential Access"], "technique": ["T1552", "Unsecured Credentials"] }
+    },
+    {
+      "title": "GKE kube-system ConfigMap changed",
+      "description": "A ConfigMap in kube-system, which configures cluster DNS and other system components, was created, changed or deleted outside the GKE system components.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "orchestrator.namespace": "kube-system",
+        "event.code": [
+          "io.k8s.core.v1.configmaps.create",
+          "io.k8s.core.v1.configmaps.update",
+          "io.k8s.core.v1.configmaps.patch",
+          "io.k8s.core.v1.configmaps.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+    },
+    {
+      "title": "GKE NetworkPolicy changed outside GitOps",
+      "description": "A NetworkPolicy was created, changed or deleted outside GitOps, which can open traffic the default-deny policies block.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.networking.v1.networkpolicies.create",
+          "io.k8s.networking.v1.networkpolicies.update",
+          "io.k8s.networking.v1.networkpolicies.patch",
+          "io.k8s.networking.v1.networkpolicies.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+    },
+    {
+      "title": "GKE namespace changed or deleted outside GitOps",
+      "description": "A namespace was changed (for example its Pod Security labels) or deleted outside GitOps.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.namespaces.update",
+          "io.k8s.core.v1.namespaces.patch",
+          "io.k8s.core.v1.namespaces.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+    },
+    {
+      "title": "GKE persistent volume deleted outside GitOps",
+      "description": "A PersistentVolumeClaim or PersistentVolume was deleted directly; with the Delete reclaim policy the disk and its data go with it.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.persistentvolumeclaims.delete",
+          "io.k8s.core.v1.persistentvolumes.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0040", "Impact"], "technique": ["T1485", "Data Destruction"] }
+    },
+    {
+      "title": "GKE resource deleted in a system or security namespace",
+      "description": "A workload, service, service account or ConfigMap was deleted outside GitOps in kube-system, the SIEM or the GitOps and secret controllers.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "orchestrator.namespace": ["kube-system", "wazuh", "argocd", "cert-manager", "external-secrets"],
+        "event.code": [
+          "io.k8s.core.v1.pods.delete",
+          "io.k8s.core.v1.services.delete",
+          "io.k8s.core.v1.serviceaccounts.delete",
+          "io.k8s.core.v1.configmaps.delete",
+          "io.k8s.apps.v1.deployments.delete",
+          "io.k8s.apps.v1.daemonsets.delete",
+          "io.k8s.apps.v1.statefulsets.delete",
+          "io.k8s.batch.v1.jobs.delete",
+          "io.k8s.batch.v1.cronjobs.delete"
+        ]
+      },
+      "exclude": {
+        "covered_by_kube_system_configmap": { "orchestrator.namespace": "kube-system", "event.code": "io.k8s.core.v1.configmaps.delete" }
+      },
+      "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+    },
+    {
+      "title": "GKE service exposed outside GitOps",
+      "description": "A Service, Ingress or Gateway API route was created or changed outside GitOps, which can expose a workload to the network or the internet.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.services.create",
+          "io.k8s.core.v1.services.update",
+          "io.k8s.core.v1.services.patch",
+          "io.k8s.networking.v1.ingresses.create",
+          "io.k8s.networking.v1.ingresses.update",
+          "io.k8s.networking.v1.ingresses.patch",
+          "io.k8s.networking.gateway.v1.gateways.create",
+          "io.k8s.networking.gateway.v1.gateways.update",
+          "io.k8s.networking.gateway.v1.gateways.patch",
+          "io.k8s.networking.gateway.v1.httproutes.create",
+          "io.k8s.networking.gateway.v1.httproutes.update",
+          "io.k8s.networking.gateway.v1.httproutes.patch"
+        ]
+      },
+      "mitre": { "tactic": ["TA0001", "Initial Access"], "technique": ["T1133", "External Remote Services"] }
     },
     {
       "title": "GKE RBAC role created or changed",
@@ -127,6 +325,50 @@
       "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1136", "Create Account"] }
     },
     {
+      "title": "GKE write denied to a workload service account",
+      "description": "The API server refused a write from a workload service account: a pod is trying actions its role does not allow, as a compromised pod probing for permissions does.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "failure",
+        "user.name|startswith": "system:serviceaccount:",
+        "error.message|contains": "is forbidden: User"
+      },
+      "mitre": { "tactic": ["TA0007", "Discovery"], "technique": ["T1069", "Permission Groups Discovery"] }
+    },
+    {
+      "title": "GKE write denied to a user",
+      "description": "The API server refused a write from a user for lack of permission.",
+      "level": "medium",
+      "selection": {
+        "event.outcome": "failure",
+        "error.message|contains": "is forbidden: User"
+      },
+      "exclude": {
+        "service_account": { "user.name|startswith": "system:serviceaccount:" }
+      },
+      "mitre": { "tactic": ["TA0007", "Discovery"], "technique": ["T1069", "Permission Groups Discovery"] }
+    },
+    {
+      "title": "GKE API write from a scripting or attack tool",
+      "description": "A write reached the API from curl, wget, a Python HTTP library or a known Kubernetes attack tool rather than kubectl, a controller or the Console.",
+      "level": "high",
+      "selection": {
+        "user_agent.original|contains": [
+          "curl/",
+          "Wget/",
+          "python-requests",
+          "Python-urllib",
+          "python-httpx",
+          "kube-hunter",
+          "peirates",
+          "kubiscan",
+          "kdigger",
+          "kubeletctl"
+        ]
+      },
+      "mitre": { "tactic": ["TA0002", "Execution"], "technique": ["T1106", "Native API"] }
+    },
+    {
       "title": "GKE certificate signing request created",
       "description": "A certificate signing request was created outside node bootstrap, a step towards a long-lived client certificate.",
       "level": "high",
@@ -167,6 +409,35 @@
         ]
       },
       "mitre": { "tactic": ["TA0005", "Defense Evasion"], "technique": ["T1562", "Impair Defenses"] }
+    },
+    {
+      "title": "GKE aggregated API service registered",
+      "description": "An APIService was created or changed outside GitOps; an aggregated API server receives the requests, and the credentials, for its whole API group.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.apiregistration.v1.apiservices.create",
+          "io.k8s.apiregistration.v1.apiservices.update",
+          "io.k8s.apiregistration.v1.apiservices.patch"
+        ]
+      },
+      "mitre": { "tactic": ["TA0006", "Credential Access"], "technique": ["T1557", "Adversary-in-the-Middle"] }
+    },
+    {
+      "title": "GKE custom resource definition changed outside GitOps",
+      "description": "A CustomResourceDefinition was created, changed or deleted outside GitOps.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.apiextensions.v1.customresourcedefinitions.create",
+          "io.k8s.apiextensions.v1.customresourcedefinitions.update",
+          "io.k8s.apiextensions.v1.customresourcedefinitions.patch",
+          "io.k8s.apiextensions.v1.customresourcedefinitions.delete"
+        ]
+      },
+      "mitre": { "tactic": ["TA0003", "Persistence"], "technique": ["T1098", "Account Manipulation"] }
     },
     {
       "title": "GKE request by an anonymous user",

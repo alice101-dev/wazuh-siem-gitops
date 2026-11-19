@@ -112,10 +112,13 @@ def ensure_integration(api, spec):
 def desired_rule(rule, config):
     product = config["integration"]["title"]
     detection = {"selection": rule["selection"]}
-    condition = "selection"
+    excluded = dict(rule.get("exclude", {}))
     if rule.get("trusted", True):
-        detection.update(config["trusted"])
-        condition = "selection and not (" + " or ".join(config["trusted"]) + ")"
+        excluded.update(config["trusted"])
+    detection.update(excluded)
+    condition = "selection"
+    if excluded:
+        condition += " and not (" + " or ".join(excluded) + ")"
     detection["condition"] = condition
     resource = {
         "metadata": {"title": rule["title"], "author": AUTHOR, "description": rule["description"]},
