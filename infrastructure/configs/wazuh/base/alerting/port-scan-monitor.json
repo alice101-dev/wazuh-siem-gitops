@@ -1,6 +1,6 @@
 {
   "type": "monitor",
-  "monitor_type": "query_level_monitor",
+  "monitor_type": "bucket_level_monitor",
   "name": "Kubernetes port scan",
   "enabled": true,
   "schedule": {
@@ -17,7 +17,6 @@
         ],
         "query": {
           "size": 0,
-          "track_total_hits": true,
           "query": {
             "bool": {
               "filter": [
@@ -38,14 +37,22 @@
               ]
             }
           },
-          "aggs": {
-            "by_pod": {
-              "terms": {
-                "script": {
-                  "source": "doc['orchestrator.namespace'].size()==0 ? 'unknown' : doc['orchestrator.namespace'].value + '/' + (doc['orchestrator.resource.name'].size()==0 ? '?' : doc['orchestrator.resource.name'].value)",
-                  "lang": "painless"
-                },
-                "size": 20
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 100,
+                "sources": [
+                  {
+                    "pod": {
+                      "terms": {
+                        "script": {
+                          "lang": "painless",
+                          "source": "doc['orchestrator.namespace'].size()==0 ? 'unknown' : doc['orchestrator.namespace'].value + '/' + (doc['orchestrator.resource.name'].size()==0 ? '?' : doc['orchestrator.resource.name'].value)"
+                        }
+                      }
+                    }
+                  }
+                ]
               },
               "aggs": {
                 "ports": {
@@ -67,12 +74,17 @@
   ],
   "triggers": [
     {
-      "query_level_trigger": {
+      "bucket_level_trigger": {
         "name": "A pod probed 10 or more ports or hosts in 5 minutes",
         "severity": "1",
         "condition": {
+          "buckets_path": {
+            "ports": "ports",
+            "hosts": "hosts"
+          },
+          "parent_bucket_path": "composite_agg",
           "script": {
-            "source": "for (def b : ctx.results[0].aggregations.by_pod.buckets) { if (b['ports']['value'] >= 10 || b['hosts']['value'] >= 10) { return true; } } return false;",
+            "source": "params.ports >= 10 || params.hosts >= 10",
             "lang": "painless"
           }
         },
@@ -85,13 +97,18 @@
               "lang": "mustache"
             },
             "message_template": {
-              "source": "{\"attachments\": [{\"color\": \"#FF1744\", \"mrkdwn_in\": [\"text\"], \"text\": \":rotating_light: *Kubernetes port scan*\\nNetworkPolicies denied connections from these pods to many ports or hosts in the last 5 minutes:{{#ctx.results.0.aggregations.by_pod.buckets}}\\n`{{key}}`: {{ports.value}} ports, {{hosts.value}} hosts, {{doc_count}} denied connections{{/ctx.results.0.aggregations.by_pod.buckets}}\\nChecked: {{ctx.periodEnd}}\"}]}",
+              "source": "{\"attachments\": [{\"color\": \"#FF1744\", \"mrkdwn_in\": [\"text\"], \"text\": \":rotating_light: *Kubernetes port scan*\\nPod: {{#ctx.newAlerts}}`{{bucket_keys}}`{{/ctx.newAlerts}}\\nNetworkPolicies denied its connections to 10 or more ports or hosts between {{ctx.periodStart}} and {{ctx.periodEnd}}.\\nIts denied connections: `event.action:deny` in wazuh-events-v5-network-activity.\"}]}",
               "lang": "mustache"
             },
-            "throttle_enabled": true,
-            "throttle": {
-              "value": 30,
-              "unit": "MINUTES"
+            "throttle_enabled": false,
+            "action_execution_policy": {
+              "action_execution_scope": {
+                "per_alert": {
+                  "actionable_alerts": [
+                    "NEW"
+                  ]
+                }
+              }
             }
           }
         ]
