@@ -8,11 +8,12 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: Operators, the Wazuh SIEM and shared configuration
+  description: Operators, the Wazuh SIEM, Falco and shared configuration
   sourceRepos:
     - https://github.com/alice101-dev/wazuh-siem-gitops.git
     - https://charts.jetstack.io
     - https://charts.external-secrets.io
+    - https://falcosecurity.github.io/charts
   destinations:
     - server: https://kubernetes.default.svc
       namespace: "*"
