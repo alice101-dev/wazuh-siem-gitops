@@ -125,6 +125,7 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Wazuh GCP log pipeline stalled | no GCP event is indexed for 15 minutes | bright red |
 | Falco runtime detection silent | no Falco canary reaches Wazuh for 30 minutes | bright red |
 | Kubernetes port scan | NetworkPolicies deny one pod 10 or more ports or 10 or more hosts in 5 minutes | bright red |
+| Permission enumeration | Google Cloud or Kubernetes denies one caller on 4 or more API methods in 5 minutes | bright red |
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
 
@@ -134,8 +135,14 @@ GKE runs the Kubernetes API server, so its audit log is not a file on a node: GK
 Logs, and the same sink that carries the Google Cloud audit logs brings the Admin Activity entries of
 `k8s.io` (every write to the API) to Wazuh, decoded by the `gcp` integration. Kubernetes reads go to the
 Data Access log (`ADMIN_READ`, `DATA_READ`, `DATA_WRITE` on `container.googleapis.com`); an exclusion keeps
-only secret reads, `nodes/proxy` and TokenRequests by principals outside the cluster system, both out of
-the `_Default` bucket, so the controllers' reads are not billed, and out of the sinks.
+only denied requests, secret reads, `nodes/proxy` and TokenRequests by principals outside the cluster
+system, both out of the `_Default` bucket, so the controllers' reads are not billed, and out of the sinks.
+
+Google Cloud logs a denied read only in the Data Access log, so `ADMIN_READ` is on for every service, and a
+second exclusion drops the successful reads of the services that are not audited for their own sake. The
+monitor [`permission-enumeration-monitor.json`](infrastructure/configs/wazuh/base/alerting/permission-enumeration-monitor.json)
+groups the denied requests of the last 5 minutes by principal, or by source IP when the denial carries no
+identity, and alerts when one caller was denied on 4 or more API methods.
 
 [`k8s-security/gke-kubernetes.json`](infrastructure/configs/wazuh/base/k8s-security/gke-kubernetes.json) holds Sigma rules on
 those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
@@ -241,6 +248,11 @@ and rules for post-exploitation steps the stock ruleset leaves out:
 | Package management process launched in container | Error | `apk`, `apt`, `yum`, `dnf`, `pip`, `npm` and the like run inside a running container |
 | Write below binary directory in container | Error | a file is written below `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin` or `/usr/local/bin` |
 | Shell history deleted or truncated in container | Warning | a `*_history` file is deleted, renamed or emptied |
+| Credential file read in container | Error | a gcloud, kubeconfig, AWS, Docker or Git credential file or an SSH private key is opened for reading outside the platform workloads |
+| Setuid or setgid bit set in container | Error | `chmod u+s` or `g+s` on a file |
+| Mount or namespace tool in container | Critical | `mount`, `umount`, `nsenter` or `unshare` runs outside the GKE system and platform workloads |
+| SSH or remote copy client in container | Error | `ssh`, `scp`, `sftp`, `sshpass`, `rsync` or `dbclient` runs |
+| Environment of another process read in container | Error | `/proc/<pid>/environ` of another process is opened |
 
 The stock rule *Redirect STDOUT/STDIN to Network Connection in Container*, which is how a reverse shell
 looks, is raised from Notice to Critical.
@@ -339,6 +351,13 @@ resources (the Google Cloud rules), removed right after.
 | Obfuscated payload | `echo <b64> \| base64 -d \| sh` | Base64 decoding in container | high |
 | Execution from shared memory | run a binary copied to `/dev/shm` | Execution from /dev/shm | high |
 | Kernel module | `insmod`, `modprobe` from a privileged pod | Linux Kernel Module Injection Detected | critical |
+| Credential theft from files | `cat ~/.config/gcloud/credentials.db`, `~/.kube/config`, `~/.ssh/id_*` | Credential file read in container | high |
+| Credential search | `grep -r "BEGIN PRIVATE"`, `find / -name id_rsa` | Search Private Keys or Passwords | high |
+| Setuid backdoor | `cp /bin/sh /tmp/x && chmod u+s /tmp/x` | Setuid or setgid bit set in container | high |
+| Escape tooling | `mount`, `unshare -r`, `nsenter -t 1 -m` | Mount or namespace tool in container | critical |
+| cgroup escape | write a `release_agent` file | Detect release_agent File Container Escapes | critical |
+| Lateral movement | `ssh`, `scp` from a pod | SSH or remote copy client in container | high |
+| Secrets in process environments | `cat /proc/1/environ` | Environment of another process read in container | high |
 
 ### Network (GKE network policy log, `gke-network-policy`)
 
@@ -371,6 +390,12 @@ resources (the Google Cloud rules), removed right after.
 | Cluster defences changed | `gcloud container clusters update` (endpoint access, authorized networks, logging, network policy, legacy ABAC) or `delete` | GKE cluster configuration changed | critical |
 | Capacity for crypto mining | `gcloud compute instances create`, `gcloud container node-pools create` / `resize` | GCP compute capacity added | high |
 | Traffic redirected or networks bridged | `gcloud compute routes create`, `routers create`, `networks peerings create`, `subnets update` | GCP VPC routing or peering changed | high |
+
+### Across Google Cloud and Kubernetes (monitor)
+
+| Technique | How to try it | Alert | Level |
+|---|---|---|---|
+| Probing stolen credentials | as a principal without roles, `gcloud compute instances list`, `secrets list`, `storage buckets list`, `iam service-accounts list`; or from a pod, `kubectl get secrets,pods,nodes -A` with its service account | Permission enumeration (monitor) | critical |
 
 ### Not detected
 
