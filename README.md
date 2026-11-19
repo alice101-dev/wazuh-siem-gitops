@@ -258,9 +258,31 @@ and rules for post-exploitation steps the stock ruleset leaves out:
 | Mount or namespace tool in container | Critical | `mount`, `umount`, `nsenter` or `unshare` runs outside the GKE system and platform workloads |
 | SSH or remote copy client in container | Error | `ssh`, `scp`, `sftp`, `sshpass`, `rsync` or `dbclient` runs |
 | Environment of another process read in container | Error | `/proc/<pid>/environ` of another process is opened |
+| Python startup hook modified in container | Error | a `.pth`, `sitecustomize` or `usercustomize` file is written in a Python site directory |
 
 The stock rule *Redirect STDOUT/STDIN to Network Connection in Container*, which is how a reverse shell
 looks, is raised from Notice to Critical.
+
+Besides the stable ruleset, falcoctl installs the [incubating and sandbox rulesets](https://falcosecurity.github.io/rules/)
+with every rule off except these, which cover what the stable and custom rules do not; the GKE system and
+platform workloads are excluded from the ones they trip by design (device, `/host`, `setns`, BPF, download
+tools, `GLIBC_TUNABLES`):
+
+| Upstream rule | Priority | Catches |
+|---|---|---|
+| Polkit Local Privilege Escalation Vulnerability (CVE-2021-4034), Sudo Potential Privilege Escalation, Unprivileged Delegation of Page Faults Handling to a Userspace Process | Critical | known local privilege escalation exploits |
+| Detect crypto miners using the Stratum protocol | Critical | a miner given a `stratum+tcp` pool |
+| Web Server Spawned Shell, Reverse Shell from Web Server | Critical | a web server running a shell or a reverse shell, as after remote code execution |
+| Privileged Container Device Access | Critical | a container reading or writing a node disk (`/dev/sd*`, `/dev/nvme*`) |
+| Container Access to Host Sensitive Paths | Warning | a container opening files under a host mount (`/host/`, `/rootfs/`) |
+| Modify Shell Configuration File | Warning | a backdoor in `.bashrc`, `.profile` and the like |
+| Create files below dev | Error | files hidden in `/dev` |
+| Backdoored library loaded into SSHD (CVE-2024-3094) | Warning | the xz backdoor |
+| Change thread namespace, BPF Program Not Profiled | Notice | `setns` and BPF programs loaded outside the platform |
+| Exfiltrating Artifacts via Kubernetes Control Plane | Notice | `kubectl cp` out of a container |
+| Potential Local Privilege Escalation via Environment Variables Misuse | Notice | `GLIBC_TUNABLES` (Looney Tunables) |
+| Launch Ingress Remote File Copy Tools in Container | Notice | `curl` or `wget` fetching files into a container |
+| User mgmt binaries, Basic Interactive Reconnaissance | Notice | account tools on a node, `whoami`/`id`-style recon in a terminal |
 
 The GKE system DaemonSets need privileges, host namespaces and host mounts, so the first three rules skip
 `kube-system` containers whose image comes from the GKE release registry, and Falco's own containers; any
@@ -363,6 +385,15 @@ resources (the Google Cloud rules), removed right after.
 | cgroup escape | write a `release_agent` file | Detect release_agent File Container Escapes | critical |
 | Lateral movement | `ssh`, `scp` from a pod | SSH or remote copy client in container | high |
 | Secrets in process environments | `cat /proc/1/environ` | Environment of another process read in container | high |
+| Backdoor in a shell profile or Python | `echo … >> ~/.bashrc`, write `site-packages/x.pth` | Modify Shell Configuration File / Python startup hook modified in container | high |
+| Known exploits | `pkexec` with no arguments, `sudo -s '…\'`, `GLIBC_TUNABLES=…` | Polkit … (CVE-2021-4034) / Sudo Potential Privilege Escalation / Potential Local Privilege Escalation via Environment Variables Misuse | critical / medium |
+| Miner pool | a command line with `stratum+tcp://` | Detect crypto miners using the Stratum protocol | critical |
+| Web shell | a web server process (`nginx`, `httpd`, …) running `sh`, or `/dev/tcp/` | Web Server Spawned Shell / Reverse Shell from Web Server | critical |
+| Node disk read | `head -c 512 /dev/sda` from a privileged pod | Privileged Container Device Access | critical |
+| Host files through a mount | `cat /host/etc/os-release` from a pod with `/` mounted at `/host` | Container Access to Host Sensitive Paths | high |
+| Files hidden in /dev | `touch /dev/x` | Create files below dev | high |
+| Data copied out | `kubectl cp <pod>:/data/file .` | Exfiltrating Artifacts via Kubernetes Control Plane | medium |
+| Tool download | `wget`, `curl -o` in a container | Launch Ingress Remote File Copy Tools in Container | medium |
 
 ### Network (GKE network policy log, `gke-network-policy`)
 
