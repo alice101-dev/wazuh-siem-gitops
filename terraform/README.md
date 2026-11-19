@@ -48,10 +48,14 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
   Both exclude the leader-election lease renewals of GKE system components (`leases.update` by a
   `system:` principal), which are most of the Kubernetes audit volume and carry no security signal.
 - Admin Activity, System Event and Policy Denied logs are always on. The `audit-logs` workspace turns on
-  Data Access logs for `iam`, `secretmanager` and `cloudkms`; the `DATA_READ` setting of `iam` also covers
+  Data Access logs for `iam`, `secretmanager`, `cloudkms` and `container` (Kubernetes reads); the `DATA_READ` setting of `iam` also covers
   service account token and signing calls (`iamcredentials.googleapis.com`), which have no setting of their
   own. It refuses `pubsub.googleapis.com`: every pull of the collector would produce a log that flows back
   into the topic.
+- `log-router` drops every Kubernetes Data Access entry except secret reads, `nodes/proxy` and TokenRequests
+  by principals outside the cluster system (`k8s_data_access_noise_filter`), as a project exclusion on
+  the `_Default` bucket and on each sink. The filter is a Terraform heredoc, which keeps backslashes
+  literal: a regex escape is written `\.`, not `\\.`.
 - Messages are stored only in `asia-southeast2` (topic message storage policy) and kept 7 days in the
   subscription. After 10 failed deliveries a message moves to `staging-siem-wazuh-dead-letter`.
 - The only reader of the subscription is the Kubernetes ServiceAccount `wazuh/wazuh-gcp-collector`, through

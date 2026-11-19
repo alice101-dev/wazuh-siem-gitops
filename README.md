@@ -131,7 +131,10 @@ A Google Cloud API call reaches Slack in about three minutes. Findings of level 
 
 GKE runs the Kubernetes API server, so its audit log is not a file on a node: GKE writes it to Cloud Audit
 Logs, and the same sink that carries the Google Cloud audit logs brings the Admin Activity entries of
-`k8s.io` (every write to the API) to Wazuh, decoded by the `gcp` integration.
+`k8s.io` (every write to the API) to Wazuh, decoded by the `gcp` integration. Kubernetes reads go to the
+Data Access log (`ADMIN_READ`, `DATA_READ`, `DATA_WRITE` on `container.googleapis.com`); an exclusion keeps
+only secret reads, `nodes/proxy` and TokenRequests by principals outside the cluster system, both out of
+the `_Default` bucket, so the controllers' reads are not billed, and out of the sinks.
 
 [`k8s-security/gke-kubernetes.json`](infrastructure/configs/wazuh/base/k8s-security/gke-kubernetes.json) holds Sigma rules on
 those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
@@ -269,6 +272,10 @@ resources (the Google Cloud rules), removed right after.
 | Service exposed | `kubectl expose` / `kubectl create service` | GKE service exposed outside GitOps | high |
 | Data destroyed | `kubectl delete pvc x` | GKE persistent volume deleted outside GitOps | high |
 | Runtime security stopped | `kubectl -n falco delete daemonset falco` | GKE runtime security tampered outside GitOps | critical |
+| Secret dump | `kubectl get secrets -A` | GKE secrets listed | critical |
+| Secret read | `kubectl -n <ns> get secret <name> -o yaml` | GKE secret read | high |
+| Pod hunting for secrets | `curl` the API with the pod's token for `/api/v1/namespaces/<ns>/secrets` | GKE secret access denied to a workload service account | high |
+| Kubelet through the API server | `kubectl get --raw /api/v1/nodes/<node>/proxy/pods` | GKE node proxy access | critical |
 | Events wiped | `kubectl delete --raw /apis/events.k8s.io/v1/namespaces/<ns>/events` | GKE events deleted | high |
 | Impersonation (`kubectl --as`) | any of the above with `--as=system:serviceaccount:argocd:argocd-application-controller` | the same rules: the audit log keeps the real caller | as above |
 
@@ -327,8 +334,10 @@ resources (the Google Cloud rules), removed right after.
 
 ### Not detected
 
-- Reads of the Kubernetes API (listing secrets, `nodes/proxy`, TokenRequests): GKE writes them only to the
-  Data Access audit log, which is off for `container.googleapis.com`.
+- Service account TokenRequests (`kubectl create token`): GKE writes them to neither the Admin Activity nor
+  the Data Access log.
+- Kubernetes reads other than secrets: the Log Router keeps only secret reads, `nodes/proxy` and
+  TokenRequests from the Kubernetes Data Access log and drops the rest.
 - Privileged or host-mounted pods as an API call: the pod spec is unindexed in the audit log; Falco sees
   them when the container starts instead.
 - Port scans inside the cluster: no rule; the default-deny NetworkPolicies of `wazuh` and `falco` block them.
