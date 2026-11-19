@@ -130,7 +130,7 @@
   ],
   "rules": [
     {
-      "title": "Falco critical alert",
+      "title": "Falco runtime threat: Critical",
       "description": "Falco raised an alert of priority Critical, Alert or Emergency on a node or container, for example a new binary dropped and run in a container.",
       "level": "critical",
       "trusted": false,
@@ -143,7 +143,7 @@
       }
     },
     {
-      "title": "Falco error alert",
+      "title": "Falco runtime threat: Error",
       "description": "Falco raised an alert of priority Error on a node or container.",
       "level": "high",
       "trusted": false,
@@ -154,7 +154,7 @@
       }
     },
     {
-      "title": "Falco warning alert",
+      "title": "Falco runtime threat: Warning",
       "description": "Falco raised an alert of priority Warning on a node or container, for example a sensitive file read, netcat remote code execution or a privileged container started.",
       "level": "high",
       "trusted": false,
@@ -165,7 +165,7 @@
       }
     },
     {
-      "title": "Falco notice alert",
+      "title": "Falco runtime threat: Notice",
       "description": "Falco raised an alert of priority Notice, for example a terminal shell in a container; the matching kubectl exec already alerts through the GKE rules.",
       "level": "medium",
       "trusted": false,

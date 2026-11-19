@@ -194,9 +194,10 @@ into `wazuh-events-v5-security`, and a `falco` detector turns them into findings
 | Error, Warning | high |
 | Notice | medium |
 
-The Slack message of a Falco finding carries the Falco rule and priority, the process and user, the container and
-image, the namespace and pod, and the Falco output. The standard `gcp` decoder also keeps a generic copy
-of each alert in `wazuh-events-v5-cloud-services`, without findings.
+A Falco finding reaches Slack titled with the Falco rule (for example *Read sensitive file untrusted*),
+then the Wazuh rule that raised it (*Falco runtime threat: Warning*), the node, the process and user, the
+container and image, the namespace and pod, and the Falco output. The standard `gcp` decoder also keeps a
+generic copy of each alert in `wazuh-events-v5-cloud-services`, without findings.
 
 ## Repository layout
 
