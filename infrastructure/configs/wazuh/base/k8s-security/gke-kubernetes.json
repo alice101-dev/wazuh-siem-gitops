@@ -612,6 +612,15 @@
           "T1069",
           "Permission Groups Discovery"
         ]
+      },
+      "exclude": {
+        "read": {
+          "event.code|endswith": [
+            ".get",
+            ".list",
+            ".watch"
+          ]
+        }
       }
     },
     {
@@ -625,6 +634,13 @@
       "exclude": {
         "service_account": {
           "user.name|startswith": "system:serviceaccount:"
+        },
+        "read": {
+          "event.code|endswith": [
+            ".get",
+            ".list",
+            ".watch"
+          ]
         }
       },
       "mitre": {
@@ -666,6 +682,15 @@
           "T1106",
           "Native API"
         ]
+      },
+      "exclude": {
+        "read": {
+          "event.code|endswith": [
+            ".get",
+            ".list",
+            ".watch"
+          ]
+        }
       }
     },
     {
