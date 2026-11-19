@@ -195,3 +195,50 @@ customRules:
       output: Falco canary beacon (pod=%k8s.pod.name command=%proc.cmdline)
       priority: NOTICE
       tags: [canary]
+
+    # Post-exploitation techniques the stable ruleset leaves out (found by the attack simulation).
+    - macro: wazuh_metadata_client
+      condition: >
+        (wazuh_gke_system_container
+         or (k8s.ns.name = wazuh and container.image.repository endswith "/staging-siem/wazuh-gcp-collector")
+         or (k8s.ns.name = falco and container.image.repository = docker.io/falcosecurity/falcosidekick)
+         or (k8s.ns.name = external-secrets and container.image.repository = ghcr.io/external-secrets/external-secrets))
+
+    - rule: Contact GKE metadata server from container
+      desc: A container connected to the metadata server (169.254.169.254), which hands out Google access tokens through Workload Identity, outside the workloads that are meant to use it.
+      condition: >
+        evt.type = connect and evt.dir = < and container and fd.sip = "169.254.169.254"
+        and not wazuh_metadata_client
+      output: Container contacted the GKE metadata server (connection=%fd.name image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name command=%proc.cmdline)
+      priority: CRITICAL
+      tags: [container, network, mitre_credential_access, T1552.005]
+
+    - list: wazuh_package_managers
+      items: [apk, apt, apt-get, aptitude, dpkg, yum, dnf, microdnf, rpm, zypper, pip, pip3, npm, gem]
+
+    - rule: Package management process launched in container
+      desc: A package manager ran inside a running container, which installs tools the image does not ship (container drift).
+      condition: spawned_process and container and proc.name in (wazuh_package_managers)
+      output: Package manager launched in container (command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, process, mitre_execution, T1105]
+
+    - rule: Write below binary directory in container
+      desc: A file was written below a binary directory of a running container, how a dropped tool or a trojaned binary lands.
+      condition: >
+        evt.type in (open, openat, openat2) and evt.is_open_write = true and container
+        and fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin)
+      output: File written below a binary directory (file=%fd.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, filesystem, mitre_persistence, T1105]
+
+    - rule: Shell history deleted or truncated in container
+      desc: A shell history file was deleted, renamed or emptied inside a container to hide the attacker's commands.
+      condition: >
+        container and (
+          (evt.type in (unlink, unlinkat, rename, renameat, renameat2) and fs.path.name contains "_history")
+          or (evt.type in (open, openat, openat2) and evt.is_open_write = true and fd.name contains "_history"
+              and evt.arg.flags contains "O_TRUNC"))
+      output: Shell history deleted or truncated (file=%fs.path.name%fd.name command=%proc.cmdline ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: WARNING
+      tags: [container, filesystem, mitre_defense_evasion, T1070.003]
