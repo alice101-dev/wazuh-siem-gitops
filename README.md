@@ -173,9 +173,11 @@ External Secrets and the enrollment hook, so what reaches Slack is a person or a
 | CustomResourceDefinition created, changed or deleted outside GitOps | high |
 | Write accepted from an anonymous user | critical |
 
-Admin Activity has no reads and no TokenRequests, and the request body stays in the unindexed
-`event.original`, so listing secrets, `nodes/proxy`, service account tokens and privileged or `hostPath`
-pods are not detected; a pod created outside GitOps is, whatever its spec. A stolen service account
+The request body of an audit entry stays in the unindexed `event.original`. For workload and role binding
+writes, the root decoder of the custom space also lets the entry through to the `gke-requests` decoder
+([`gke-requests.json`](infrastructure/configs/wazuh/base/k8s-security/gke-requests.json)), which reads the
+body and tags `privileged`, `host_network`, `host_pid`, `host_ipc`, `host_path`, `cap_sys_admin` and
+`admin_role_binding` into `wazuh-events-v5-security`, where five rules of its own detector alert on them. A stolen service account
 token cannot be replayed from outside: the DNS endpoint accepts Google IAM credentials only and the IP
 endpoint only the node subnet.
 
@@ -276,6 +278,11 @@ resources (the Google Cloud rules), removed right after.
 | Secret read | `kubectl -n <ns> get secret <name> -o yaml` | GKE secret read | high |
 | Pod hunting for secrets | `curl` the API with the pod's token for `/api/v1/namespaces/<ns>/secrets` | GKE secret access denied to a workload service account | high |
 | Kubelet through the API server | `kubectl get --raw /api/v1/nodes/<node>/proxy/pods` | GKE node proxy access | critical |
+| Privileged workload | create a pod or Deployment with `securityContext.privileged: true` | GKE privileged workload requested | critical |
+| Host namespaces | a pod spec with `hostNetwork`, `hostPID` or `hostIPC` | GKE workload with host namespaces requested | critical |
+| Node filesystem | a pod spec with a `hostPath` volume | GKE workload with a hostPath volume requested | high |
+| `SYS_ADMIN` | a container with `capabilities.add: [SYS_ADMIN]` | GKE workload with CAP_SYS_ADMIN requested | critical |
+| Admin role granted | `kubectl create clusterrolebinding x --clusterrole=cluster-admin …` (also `admin`, `edit`) | GKE binding to an admin role | critical |
 | Events wiped | `kubectl delete --raw /apis/events.k8s.io/v1/namespaces/<ns>/events` | GKE events deleted | high |
 | Impersonation (`kubectl --as`) | any of the above with `--as=system:serviceaccount:argocd:argocd-application-controller` | the same rules: the audit log keeps the real caller | as above |
 
@@ -338,15 +345,11 @@ resources (the Google Cloud rules), removed right after.
   the Data Access log.
 - Kubernetes reads other than secrets: the Log Router keeps only secret reads, `nodes/proxy` and
   TokenRequests from the Kubernetes Data Access log and drops the rest.
-- Privileged or host-mounted pods as an API call: the pod spec is unindexed in the audit log; Falco sees
-  them when the container starts instead.
 - Port scans inside the cluster: no rule; the default-deny NetworkPolicies of `wazuh` and `falco` block them.
-- `cluster-admin` versus a lesser role in a new binding: the `roleRef` is unindexed, so every binding made
-  outside GitOps is high.
 - Events deleted one by one (`kubectl delete events --all`) or through the core API collection: GKE audits
   only the `events.k8s.io` collection delete.
-- Events indexed while a detector is rebuilt, which happens when its rules change, can be skipped by that
-  detector run.
+- Events that arrive while a detector is rebuilt or while the managers reload the custom space, both of
+  which happen only when the detection content in Git changes, can be skipped.
 
 ## Repository layout
 
