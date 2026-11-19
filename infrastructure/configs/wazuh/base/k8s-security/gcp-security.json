@@ -440,6 +440,7 @@
           "event.outcome": "failure"
         },
         "operation_end": {
+          "service.name": "container.googleapis.com",
           "event.outcome": "unknown"
         }
       },
@@ -479,6 +480,7 @@
           "event.outcome": "failure"
         },
         "operation_end": {
+          "service.name": "container.googleapis.com",
           "event.outcome": "unknown"
         }
       },

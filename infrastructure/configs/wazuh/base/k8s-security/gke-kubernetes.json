@@ -643,6 +643,7 @@
       "description": "A write reached the API from curl, wget, a Python HTTP library or a known Kubernetes attack tool rather than kubectl, a controller or the Console.",
       "level": "high",
       "selection": {
+        "event.code|startswith": "io.k8s.",
         "user_agent.original|contains": [
           "curl/",
           "Wget/",
