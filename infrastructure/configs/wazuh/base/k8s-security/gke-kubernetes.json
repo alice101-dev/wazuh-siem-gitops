@@ -825,6 +825,134 @@
           "Indicator Removal"
         ]
       }
+    },
+    {
+      "title": "GKE secrets listed",
+      "description": "Secrets were listed or watched, which returns the content of every secret in scope: the usual first step after a foothold (secret dump).",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.core.v1.secrets.list",
+          "io.k8s.core.v1.secrets.watch"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1552",
+          "Unsecured Credentials"
+        ]
+      }
+    },
+    {
+      "title": "GKE secret read",
+      "description": "A secret was read by a principal other than the cluster system, the GitOps and secret controllers and the enrollment hook.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": "io.k8s.core.v1.secrets.get"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1552",
+          "Unsecured Credentials"
+        ]
+      }
+    },
+    {
+      "title": "GKE secret access denied to a workload service account",
+      "description": "The API server refused a workload service account access to secrets: a compromised pod looking for credentials.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "failure",
+        "user.name|startswith": "system:serviceaccount:",
+        "event.code": [
+          "io.k8s.core.v1.secrets.get",
+          "io.k8s.core.v1.secrets.list",
+          "io.k8s.core.v1.secrets.watch"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0007",
+          "Discovery"
+        ],
+        "technique": [
+          "T1069",
+          "Permission Groups Discovery"
+        ]
+      }
+    },
+    {
+      "title": "GKE node proxy access",
+      "description": "The nodes/proxy subresource was used, which reaches the kubelet API of a node through the API server: list or exec into every pod of the node.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "event.code|startswith": "io.k8s.core.v1.nodes.proxy."
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1068",
+          "Exploitation for Privilege Escalation"
+        ]
+      }
+    },
+    {
+      "title": "GKE service account token requested",
+      "description": "A principal other than the kubelet and the cluster controllers requested a service account token through the TokenRequest API.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": "io.k8s.core.v1.serviceaccounts.token.create"
+      },
+      "exclude": {
+        "system_namespace": {
+          "orchestrator.namespace": "kube-system"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1528",
+          "Steal Application Access Token"
+        ]
+      }
+    },
+    {
+      "title": "GKE kube-system service account token requested",
+      "description": "A principal other than the kubelet and the cluster controllers requested a token for a kube-system service account, which usually holds cluster-wide permissions.",
+      "level": "critical",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": "io.k8s.core.v1.serviceaccounts.token.create",
+        "orchestrator.namespace": "kube-system"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1528",
+          "Steal Application Access Token"
+        ]
+      }
     }
   ]
 }

@@ -11,6 +11,16 @@ security_log_filter = <<-EOT
   OR log_id("compute.googleapis.com/firewall")
 EOT
 
+# Keep only secret reads, nodes/proxy and TokenRequests by principals other than the cluster system,
+# the GitOps and secret controllers and the enrollment hook; drop every other Kubernetes Data Access log.
+k8s_data_access_noise_filter = <<-EOT
+  log_id("cloudaudit.googleapis.com/data_access") AND resource.type="k8s_cluster"
+  AND (
+    NOT protoPayload.methodName=~"^io\\.k8s\\.core\\.v1\\.(secrets\\.(get|list|watch)|nodes\\.proxy\\..+|serviceaccounts\\.token\\.create)$"
+    OR protoPayload.authenticationInfo.principalEmail=~"^(system:(node:|kube-|apiserver|gke-|gcp-|anet-|pdcsi-|cloud-controller-manager|cluster-autoscaler|serviceaccount:(kube-system|gke-[a-z-]+|gmp-system|argocd|cert-manager|external-secrets|falco):|serviceaccount:wazuh:wazuh-enrollment$)|kubelet-nodepool-bootstrap$|.+@container-engine-robot\\.iam\\.gserviceaccount\\.com$)"
+  )
+EOT
+
 sinks = {
   "siem-wazuh" = {
     destination_type = "pubsub"

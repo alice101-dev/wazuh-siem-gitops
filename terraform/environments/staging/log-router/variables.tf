@@ -38,3 +38,9 @@ variable "sinks" {
   }))
   default = {}
 }
+
+variable "k8s_data_access_noise_filter" {
+  description = "Logging query of the Kubernetes Data Access logs to drop: excluded from the _Default bucket (no ingestion charge) and from every sink. Empty keeps them all."
+  type        = string
+  default     = ""
+}
