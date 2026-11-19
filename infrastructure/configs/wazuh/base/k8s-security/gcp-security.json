@@ -616,6 +616,442 @@
           "Network Boundary Bridging"
         ]
       }
+    },
+    {
+      "title": "GCP API key created or changed",
+      "level": "critical",
+      "description": "An API key was created, changed (restrictions removed or widened) or restored on the Credentials page or with gcloud: a static secret that never expires and needs no identity to use.",
+      "selection": {
+        "service.name": "apikeys.googleapis.com",
+        "event.code|endswith": [
+          ".CreateKey",
+          ".UpdateKey",
+          ".UndeleteKey"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP API key string read",
+      "level": "high",
+      "description": "The secret string of an API key was read (Show key in the console, gcloud services api-keys get-key-string): how an existing key is stolen.",
+      "selection": {
+        "service.name": "apikeys.googleapis.com",
+        "event.code|endswith": ".GetKeyString"
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0006",
+          "Credential Access"
+        ],
+        "technique": [
+          "T1552",
+          "Unsecured Credentials"
+        ]
+      }
+    },
+    {
+      "title": "GCP OAuth client created or changed",
+      "level": "high",
+      "description": "An OAuth client ID or consent screen was created, changed or deleted on the Credentials page: an app that can ask users for access to their Google data.",
+      "selection": {
+        "service.name": "clientauthconfig.googleapis.com",
+        "event.code|endswith": [
+          ".CreateClient",
+          ".UpdateClient",
+          ".DeleteClient",
+          ".CreateBrand",
+          ".UpdateBrand"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP OS Login SSH key added",
+      "level": "high",
+      "description": "An SSH public key was added to an OS Login profile: SSH access to every VM that trusts that account.",
+      "selection": {
+        "service.name": "oslogin.googleapis.com",
+        "event.code|endswith": [
+          ".ImportSshPublicKey",
+          ".CreateSshPublicKey",
+          ".UpdateSshPublicKey"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0003",
+          "Persistence"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP organization policy changed",
+      "level": "critical",
+      "description": "An organization policy (a guardrail such as no service account keys, no public IPs or allowed regions) was created, changed or removed.",
+      "selection": {
+        "event.code": [
+          "google.cloud.orgpolicy.v2.OrgPolicy.CreatePolicy",
+          "google.cloud.orgpolicy.v2.OrgPolicy.UpdatePolicy",
+          "google.cloud.orgpolicy.v2.OrgPolicy.DeletePolicy",
+          "SetOrgPolicy",
+          "ClearOrgPolicy"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
+    },
+    {
+      "title": "GCP IAM deny policy changed",
+      "level": "critical",
+      "description": "An IAM deny policy, which overrides any grant, was created, changed or deleted.",
+      "selection": {
+        "event.code": [
+          "google.iam.v2.Policies.CreatePolicy",
+          "google.iam.v2.Policies.UpdatePolicy",
+          "google.iam.v2.Policies.DeletePolicy"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
+    },
+    {
+      "title": "GCP alerting or security contacts tampered",
+      "level": "high",
+      "description": "A Cloud Monitoring alert policy or notification channel was changed or deleted, or the essential (security) contacts changed: how an attacker silences the alarms.",
+      "selection": {
+        "event.code": [
+          "google.monitoring.v3.AlertPolicyService.UpdateAlertPolicy",
+          "google.monitoring.v3.AlertPolicyService.DeleteAlertPolicy",
+          "google.monitoring.v3.NotificationChannelService.UpdateNotificationChannel",
+          "google.monitoring.v3.NotificationChannelService.DeleteNotificationChannel",
+          "google.cloud.essentialcontacts.v1.EssentialContactsService.CreateContact",
+          "google.cloud.essentialcontacts.v1.EssentialContactsService.UpdateContact",
+          "google.cloud.essentialcontacts.v1.EssentialContactsService.DeleteContact"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1562",
+          "Impair Defenses"
+        ]
+      }
+    },
+    {
+      "title": "GCP disk snapshot or image created or shared",
+      "level": "high",
+      "description": "A snapshot, image or machine image of a disk was created, or one was shared through its IAM policy: how a whole disk, secrets included, is copied out of the project.",
+      "selection": {
+        "service.name": "compute.googleapis.com",
+        "event.code|endswith": [
+          "compute.snapshots.insert",
+          "compute.disks.createSnapshot",
+          "compute.images.insert",
+          "compute.machineImages.insert",
+          "compute.images.setIamPolicy",
+          "compute.snapshots.setIamPolicy",
+          "compute.machineImages.setIamPolicy",
+          "compute.disks.setIamPolicy"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0010",
+          "Exfiltration"
+        ],
+        "technique": [
+          "T1537",
+          "Transfer Data to Cloud Account"
+        ]
+      }
+    },
+    {
+      "title": "GCP secret IAM policy changed",
+      "level": "high",
+      "description": "Who may read or manage a Secret Manager secret changed.",
+      "selection": {
+        "service.name": "secretmanager.googleapis.com",
+        "event.code|endswith": ".SetIamPolicy"
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP secret replaced, disabled or destroyed",
+      "level": "high",
+      "description": "A secret got a new version, or a version was disabled or destroyed, or the secret was deleted: a credential the cluster loads (the Slack webhook, for one) replaced or removed.",
+      "selection": {
+        "service.name": "secretmanager.googleapis.com",
+        "event.code|endswith": [
+          ".AddSecretVersion",
+          ".DisableSecretVersion",
+          ".DestroySecretVersion",
+          ".DeleteSecret",
+          ".UpdateSecret"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0040",
+          "Impact"
+        ],
+        "technique": [
+          "T1485",
+          "Data Destruction"
+        ]
+      }
+    },
+    {
+      "title": "GCP Artifact Registry IAM policy changed",
+      "level": "high",
+      "description": "Who may pull from or push to an Artifact Registry repository changed: a push grant lets a poisoned image replace the SIEM collector.",
+      "selection": {
+        "service.name": "artifactregistry.googleapis.com",
+        "event.code|endswith": ".SetIamPolicy"
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0001",
+          "Initial Access"
+        ],
+        "technique": [
+          "T1195",
+          "Supply Chain Compromise"
+        ]
+      }
+    },
+    {
+      "title": "GCP BigQuery access changed",
+      "level": "high",
+      "description": "The access list or IAM policy of a BigQuery dataset or table changed, how data is shared out of the project.",
+      "selection": {
+        "service.name": "bigquery.googleapis.com",
+        "event.code|endswith": [
+          ".SetIamPolicy",
+          ".PatchDataset",
+          ".UpdateDataset"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0010",
+          "Exfiltration"
+        ],
+        "technique": [
+          "T1537",
+          "Transfer Data to Cloud Account"
+        ]
+      }
+    },
+    {
+      "title": "GCP VM service account changed",
+      "level": "high",
+      "description": "The service account or scopes of a VM were changed: the VM, and whoever runs code on it, gets that account's access.",
+      "selection": {
+        "service.name": "compute.googleapis.com",
+        "event.code|endswith": "compute.instances.setServiceAccount"
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    },
+    {
+      "title": "GCP serverless code or build deployed",
+      "level": "high",
+      "description": "A Cloud Run service or job, a Cloud Function, a Cloud Build build or trigger, or a Cloud Scheduler job was created or changed: code that runs as a service account, outside the cluster and its runtime security.",
+      "selection": {
+        "event.code|endswith": [
+          "run.v1.Services.CreateService",
+          "run.v1.Services.ReplaceService",
+          "run.v2.Services.CreateService",
+          "run.v2.Services.UpdateService",
+          "run.v2.Jobs.CreateJob",
+          "run.v2.Jobs.UpdateJob",
+          "run.v2.Jobs.RunJob",
+          "FunctionService.CreateFunction",
+          "FunctionService.UpdateFunction",
+          "CloudFunctionsService.CreateFunction",
+          "CloudFunctionsService.UpdateFunction",
+          "CloudBuild.CreateBuild",
+          "CloudBuild.CreateBuildTrigger",
+          "CloudBuild.RunBuildTrigger",
+          "CloudScheduler.CreateJob",
+          "CloudScheduler.UpdateJob"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0002",
+          "Execution"
+        ],
+        "technique": [
+          "T1648",
+          "Serverless Execution"
+        ]
+      }
+    },
+    {
+      "title": "GCP DNS changed",
+      "level": "high",
+      "description": "A Cloud DNS zone, record set or DNS policy was created, changed or deleted: how traffic for a name is redirected.",
+      "selection": {
+        "service.name": "dns.googleapis.com",
+        "event.code|endswith": [
+          "dns.changes.create",
+          "dns.managedZones.create",
+          "dns.managedZones.patch",
+          "dns.managedZones.update",
+          "dns.managedZones.delete",
+          "dns.policies.create",
+          "dns.policies.patch",
+          "dns.policies.update",
+          "dns.resourceRecordSets.create",
+          "dns.resourceRecordSets.patch",
+          "dns.resourceRecordSets.delete"
+        ]
+      },
+      "exclude": {
+        "failed": {
+          "event.outcome": "failure"
+        }
+      },
+      "mitre": {
+        "tactic": [
+          "TA0040",
+          "Impact"
+        ],
+        "technique": [
+          "T1565",
+          "Data Manipulation"
+        ]
+      }
     }
   ]
 }

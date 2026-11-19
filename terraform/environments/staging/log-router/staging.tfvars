@@ -28,7 +28,7 @@ EOT
 admin_read_noise_filter = <<-EOT
   log_id("cloudaudit.googleapis.com/data_access")
   AND NOT protoPayload.status.code=7
-  AND NOT protoPayload.serviceName=("k8s.io" OR "container.googleapis.com" OR "iam.googleapis.com" OR "iamcredentials.googleapis.com" OR "secretmanager.googleapis.com" OR "cloudkms.googleapis.com")
+  AND NOT protoPayload.serviceName=("k8s.io" OR "apikeys.googleapis.com" OR "container.googleapis.com" OR "iam.googleapis.com" OR "iamcredentials.googleapis.com" OR "secretmanager.googleapis.com" OR "cloudkms.googleapis.com")
 EOT
 
 sinks = {
