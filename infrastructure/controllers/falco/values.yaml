@@ -486,6 +486,12 @@ customRules:
       override:
         condition: append
 
+    # kubectl cp out of a container is data leaving the cluster: raised from Notice so it reaches Slack.
+    - rule: Exfiltrating Artifacts via Kubernetes Control Plane
+      override:
+        priority: replace
+      priority: ERROR
+
     - rule: Linux Kernel Module Injection Detected
       override:
         priority: replace
