@@ -48,8 +48,6 @@ falco:
     - enable:
         rule: Modify Shell Configuration File
     - enable:
-        rule: Modify Python Startup Hook File
-    - enable:
         rule: Create files below dev
     - enable:
         rule: Change thread namespace
@@ -444,6 +442,18 @@ customRules:
       output: Environment of another process read in container (file=%fd.name process=%proc.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
       priority: ERROR
       tags: [container, filesystem, mitre_credential_access, T1552.007]
+
+    - rule: Python startup hook modified in container
+      desc: A .pth file or a sitecustomize or usercustomize module was written in a Python site directory inside a container, code every Python process then runs at start.
+      condition: >
+        evt.type in (open, openat, openat2) and evt.is_open_write = true and container and not wazuh_platform_container
+        and (fd.directory endswith /site-packages or fd.directory endswith /dist-packages)
+        and (fd.filename endswith .pth or fd.filename startswith sitecustomize. or fd.filename startswith usercustomize.)
+        and not proc.name in (pip, pip3, apk, apt, apt-get, dpkg, yum, dnf, rpm, conda, poetry, uv)
+        and not (proc.name startswith python and proc.args contains "-m pip")
+      output: Python startup hook modified in container (file=%fd.name process=%proc.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, filesystem, mitre_persistence, T1546.018]
 
     # Upstream incubating and sandbox rules that the GKE system and platform workloads trip by design.
     - rule: Privileged Container Device Access
