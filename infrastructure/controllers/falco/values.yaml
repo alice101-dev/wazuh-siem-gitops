@@ -26,6 +26,8 @@ falcoctl:
 
 falco:
   priority: notice
+  # Emit every rule an event matches, not only the first: a container can be privileged and untrusted at once.
+  rule_matching: all
   json_output: true
   json_include_output_property: true
   json_include_output_fields_property: true
@@ -83,7 +85,9 @@ falcosidekick:
 customRules:
   wazuh-container-launch.yaml: |-
     - macro: wazuh_container_started
-      condition: (spawned_process and proc.vpid=1 and container and container.image.repository != "")
+      condition: >
+        (spawned_process and container and container.image.repository != ""
+         and (proc.vpid=1 or container_entrypoint))
 
     - macro: wazuh_gke_system_container
       condition: >
@@ -122,17 +126,28 @@ customRules:
          or (container.image.repository startswith "asia-southeast2-docker.pkg.dev/"
              and container.image.repository endswith "/staging-siem/wazuh-gcp-collector"))
 
+    # container.mounts is "source:dest:mode:rdwr:propagation" items joined by commas; match the exact source.
     - macro: wazuh_sensitive_host_mount
       condition: >
-        (container.mount[/] != none or container.mount[/etc] != none or container.mount[/proc] != none
-         or container.mount[/sys] != none or container.mount[/dev] != none or container.mount[/boot] != none
-         or container.mount[/root] != none or container.mount[/home] != none
-         or container.mount[/run] != none or container.mount[/var/run] != none
-         or container.mount[/run/containerd] != none or container.mount[/run/containerd/containerd.sock] != none
-         or container.mount[/var/run/docker.sock] != none or container.mount[/var/lib/containerd] != none
-         or container.mount[/var/lib/kubelet] != none or container.mount[/var/lib/kubelet/pki] != none
-         or container.mount[/var/lib/kubelet/kubeconfig] != none or container.mount[/etc/kubernetes] != none
-         or container.mount[/home/kubernetes] != none)
+        (container.mounts startswith "/:" or container.mounts contains ",/:"
+         or container.mounts startswith "/etc:" or container.mounts contains ",/etc:"
+         or container.mounts startswith "/proc:" or container.mounts contains ",/proc:"
+         or container.mounts startswith "/sys:" or container.mounts contains ",/sys:"
+         or container.mounts startswith "/dev:" or container.mounts contains ",/dev:"
+         or container.mounts startswith "/boot:" or container.mounts contains ",/boot:"
+         or container.mounts startswith "/root:" or container.mounts contains ",/root:"
+         or container.mounts startswith "/home:" or container.mounts contains ",/home:"
+         or container.mounts startswith "/run:" or container.mounts contains ",/run:"
+         or container.mounts startswith "/var/run:" or container.mounts contains ",/var/run:"
+         or container.mounts startswith "/run/containerd:" or container.mounts contains ",/run/containerd:"
+         or container.mounts startswith "/run/containerd/containerd.sock:" or container.mounts contains ",/run/containerd/containerd.sock:"
+         or container.mounts startswith "/var/run/docker.sock:" or container.mounts contains ",/var/run/docker.sock:"
+         or container.mounts startswith "/var/lib/containerd:" or container.mounts contains ",/var/lib/containerd:"
+         or container.mounts startswith "/var/lib/kubelet:" or container.mounts contains ",/var/lib/kubelet:"
+         or container.mounts startswith "/var/lib/kubelet/pki:" or container.mounts contains ",/var/lib/kubelet/pki:"
+         or container.mounts startswith "/var/lib/kubelet/kubeconfig:" or container.mounts contains ",/var/lib/kubelet/kubeconfig:"
+         or container.mounts startswith "/etc/kubernetes:" or container.mounts contains ",/etc/kubernetes:"
+         or container.mounts startswith "/home/kubernetes:" or container.mounts contains ",/home/kubernetes:")
 
     - rule: Privileged container started
       desc: A container started in privileged mode outside the GKE system DaemonSets and Falco; it can reach the host and escape the container.
