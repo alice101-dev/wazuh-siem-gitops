@@ -20,6 +20,7 @@ configMapGenerator:
       - k8s-security/falco.json
       - k8s-security/gcp-security.json
       - k8s-security/gke-requests.json
+      - k8s-security/gke-network-policy.json
       - k8s-security/dashboard.json
   - name: wazuh-manager-config
     files:
@@ -37,6 +38,7 @@ configMapGenerator:
       - alerting/disk-usage-monitor.json
       - alerting/pipeline-freshness-monitor.json
       - alerting/falco-canary-monitor.json
+      - alerting/port-scan-monitor.json
 images:
   - name: wazuh/wazuh-indexer
     newTag: 5.0.0-rc2

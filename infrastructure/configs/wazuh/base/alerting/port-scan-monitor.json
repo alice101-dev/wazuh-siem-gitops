@@ -1,0 +1,101 @@
+{
+  "type": "monitor",
+  "monitor_type": "query_level_monitor",
+  "name": "Kubernetes port scan",
+  "enabled": true,
+  "schedule": {
+    "period": {
+      "interval": 5,
+      "unit": "MINUTES"
+    }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": [
+          "wazuh-events-v5-network-activity"
+        ],
+        "query": {
+          "size": 0,
+          "track_total_hits": true,
+          "query": {
+            "bool": {
+              "filter": [
+                {
+                  "range": {
+                    "@timestamp": {
+                      "gte": "{{period_end}}||-5m",
+                      "lte": "{{period_end}}",
+                      "format": "epoch_millis"
+                    }
+                  }
+                },
+                {
+                  "term": {
+                    "event.action": "deny"
+                  }
+                }
+              ]
+            }
+          },
+          "aggs": {
+            "by_pod": {
+              "terms": {
+                "script": {
+                  "source": "doc['orchestrator.namespace'].size()==0 ? 'unknown' : doc['orchestrator.namespace'].value + '/' + (doc['orchestrator.resource.name'].size()==0 ? '?' : doc['orchestrator.resource.name'].value)",
+                  "lang": "painless"
+                },
+                "size": 20
+              },
+              "aggs": {
+                "ports": {
+                  "cardinality": {
+                    "field": "destination.port"
+                  }
+                },
+                "hosts": {
+                  "cardinality": {
+                    "field": "destination.ip"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "query_level_trigger": {
+        "name": "A pod probed 10 or more ports or hosts in 5 minutes",
+        "severity": "1",
+        "condition": {
+          "script": {
+            "source": "for (def b : ctx.results[0].aggregations.by_pod.buckets) { if (b['ports']['value'] >= 10 || b['hosts']['value'] >= 10) { return true; } } return false;",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Slack",
+            "destination_id": "wazuh-slack",
+            "subject_template": {
+              "source": "Kubernetes port scan",
+              "lang": "mustache"
+            },
+            "message_template": {
+              "source": "{\"attachments\": [{\"color\": \"#FF1744\", \"mrkdwn_in\": [\"text\"], \"text\": \":rotating_light: *Kubernetes port scan*\\nNetworkPolicies denied connections from these pods to many ports or hosts in the last 5 minutes:{{#ctx.results.0.aggregations.by_pod.buckets}}\\n`{{key}}`: {{ports.value}} ports, {{hosts.value}} hosts, {{doc_count}} denied connections{{/ctx.results.0.aggregations.by_pod.buckets}}\\nChecked: {{ctx.periodEnd}}\"}]}",
+              "lang": "mustache"
+            },
+            "throttle_enabled": true,
+            "throttle": {
+              "value": 30,
+              "unit": "MINUTES"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

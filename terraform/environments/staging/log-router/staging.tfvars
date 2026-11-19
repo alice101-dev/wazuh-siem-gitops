@@ -9,6 +9,7 @@ security_log_filter = <<-EOT
   OR log_id("cloudaudit.googleapis.com/policy")
   OR log_id("cloudaudit.googleapis.com/access_transparency")
   OR log_id("compute.googleapis.com/firewall")
+  OR log_id("policy-action")
 EOT
 
 # Keep only secret reads, nodes/proxy and TokenRequests by principals other than the cluster system,
