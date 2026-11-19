@@ -94,6 +94,7 @@ customRules:
       condition: >
         (k8s.ns.name = kube-system
          and (container.image.repository contains "-artifactregistry.gcr.io/gke-release/"
+              or container.image.repository contains "-artifactregistry.gcr.io/gke-release-staging/"
               or container.image.repository startswith "gke.gcr.io/"))
 
     - macro: wazuh_falco_container
@@ -122,6 +123,7 @@ customRules:
       condition: >
         (container.image.repository in (wazuh_trusted_images)
          or container.image.repository contains "-artifactregistry.gcr.io/gke-release/"
+         or container.image.repository contains "-artifactregistry.gcr.io/gke-release-staging/"
          or container.image.repository startswith "gke.gcr.io/"
          or container.image.repository startswith "registry.k8s.io/"
          or (container.image.repository startswith "asia-southeast2-docker.pkg.dev/"

@@ -27,7 +27,8 @@
         "system:serviceaccount:gke-",
         "system:serviceaccount:argocd:",
         "system:serviceaccount:cert-manager:",
-        "system:serviceaccount:external-secrets:"
+        "system:serviceaccount:external-secrets:",
+        "system:addon-manager"
       ]
     },
     "trusted_robot": {
