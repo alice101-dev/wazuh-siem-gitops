@@ -88,7 +88,7 @@ customRules:
     - macro: wazuh_container_started
       condition: >
         (spawned_process and container and container.image.repository != ""
-         and (proc.vpid=1 or container_entrypoint))
+         and (proc.vpid=1 or (container.host_pid=true and container_entrypoint)))
 
     - macro: wazuh_gke_system_container
       condition: >
@@ -242,3 +242,106 @@ customRules:
       output: Shell history deleted or truncated (file=%fs.path.name%fd.name command=%proc.cmdline ns=%k8s.ns.name pod=%k8s.pod.name)
       priority: WARNING
       tags: [container, filesystem, mitre_defense_evasion, T1070.003]
+
+    # Platform workloads this cluster runs on purpose; their own behaviour is not an attack.
+    - macro: wazuh_platform_container
+      condition: >
+        (wazuh_gke_system_container or wazuh_falco_container
+         or (k8s.ns.name in (wazuh, argocd, cert-manager, external-secrets) and wazuh_trusted_image))
+
+    - list: wazuh_miner_binaries
+      items: [xmrig, xmr-stak, xmr-stak-cpu, minerd, cpuminer, cpuminer-multi, ccminer, nbminer, t-rex, lolminer, phoenixminer, ethminer, nanominer, gminer, kdevtmpfsi, kinsing]
+
+    - rule: Crypto miner launched in container
+      desc: A known miner binary ran, or a process was started with a mining pool URL or miner options.
+      condition: >
+        spawned_process and container
+        and (proc.name in (wazuh_miner_binaries)
+             or proc.cmdline contains "stratum+tcp://" or proc.cmdline contains "stratum+ssl://"
+             or proc.cmdline contains "stratum2+tcp://" or proc.cmdline contains "--donate-level"
+             or proc.cmdline contains "--cpu-priority" or proc.cmdline contains "nicehash")
+      output: Crypto miner launched (command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, process, mitre_impact, T1496]
+
+    - rule: Outbound connection to a mining pool port
+      desc: A container connected to a port that mining pools use (Stratum).
+      condition: >
+        evt.type = connect and container and fd.typechar = 4
+        and fd.sport in (3333, 3334, 3335, 5555, 5556, 7777, 8333, 9999, 14433, 14444, 45560, 45700)
+        and not wazuh_platform_container
+      output: Connection to a mining pool port (connection=%fd.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, network, mitre_impact, T1496]
+
+    - list: wazuh_cluster_clients
+      items: [kubectl, crictl, ctr, docker, nerdctl, podman, helm, kubeletctl, peirates, kube-hunter, kubescape, kdigger, amicontained, deepce, cdk, botb]
+
+    - rule: Kubernetes or container runtime client in container
+      desc: A Kubernetes, container runtime or container attack client ran inside a container, typical of lateral movement or escape attempts.
+      condition: >
+        spawned_process and container and proc.name in (wazuh_cluster_clients)
+        and not (k8s.ns.name = argocd and container.image.repository = quay.io/argoproj/argocd)
+      output: Cluster client launched in container (command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, process, mitre_execution, T1609]
+
+    - list: wazuh_recon_tools
+      items: [nmap, masscan, zmap, rustscan, nping, hping3, arp-scan, nbtscan, tcpdump, tshark, dumpcap, ngrep, socat]
+
+    - rule: Network reconnaissance tool in container
+      desc: A port scanner, packet capture or relay tool ran inside a container.
+      condition: spawned_process and container and proc.name in (wazuh_recon_tools) and not wazuh_platform_container
+      output: Network reconnaissance tool launched (command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, process, mitre_discovery, T1046]
+
+    - rule: Contact kubelet API from container
+      desc: A container connected to the kubelet API of a node (ports 10250, 10255), how an attacker lists or execs into every pod of the node.
+      condition: >
+        evt.type = connect and container and fd.typechar = 4 and fd.sport in (10250, 10255)
+        and not wazuh_platform_container
+      output: Container contacted a kubelet API (connection=%fd.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, network, mitre_lateral_movement, T1210]
+
+    - rule: Read service account token of another pod
+      desc: A container read a projected service account token from the kubelet pod directory of the node, the tokens of every other pod.
+      condition: >
+        evt.type in (open, openat, openat2) and evt.is_open_read = true and container
+        and fd.name contains "/volumes/kubernetes.io~projected/" and fd.name endswith "/token"
+        and not wazuh_platform_container
+      output: Service account token of another pod read (file=%fd.name command=%proc.cmdline ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [container, filesystem, mitre_credential_access, T1528]
+
+    - rule: Persistence file modified in container
+      desc: Accounts, sudoers, SSH authorized keys or cron tables were written inside a container.
+      condition: >
+        evt.type in (open, openat, openat2) and evt.is_open_write = true and container
+        and (fd.name in (/etc/passwd, /etc/shadow, /etc/group, /etc/gshadow, /etc/sudoers)
+             or fd.name startswith /etc/sudoers.d/
+             or fd.name endswith "/.ssh/authorized_keys" or fd.name endswith "/.ssh/authorized_keys2"
+             or fd.name startswith /etc/cron or fd.name startswith /etc/crontabs/
+             or fd.name startswith /var/spool/cron/)
+        and not wazuh_platform_container
+      output: Persistence file modified (file=%fd.name command=%proc.cmdline image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, filesystem, mitre_persistence, T1098.004, T1053.003, T1136]
+
+    - rule: Base64 decoding in container
+      desc: Content was decoded from base64 inside a container, how obfuscated payloads are unpacked before they run.
+      condition: >
+        spawned_process and container and not wazuh_platform_container
+        and ((proc.name = base64 and (proc.args contains "-d" or proc.args contains "--decode"))
+             or proc.cmdline contains "base64 -d" or proc.cmdline contains "base64 --decode"
+             or proc.cmdline contains "b64decode")
+      output: Base64 decoding in container (command=%proc.cmdline parent=%proc.pname image=%container.image.repository ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [container, process, mitre_defense_evasion, T1140]
+
+    - rule: Linux Kernel Module Injection Detected
+      override:
+        priority: replace
+      priority: CRITICAL
+

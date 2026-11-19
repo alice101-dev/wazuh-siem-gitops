@@ -803,6 +803,28 @@
           "Valid Accounts"
         ]
       }
+    },
+    {
+      "title": "GKE events deleted",
+      "description": "A whole collection of Kubernetes events was deleted, which erases the record of what happened in a namespace.",
+      "level": "high",
+      "selection": {
+        "event.outcome": "success",
+        "event.code": [
+          "io.k8s.events.v1.events.deletecollection",
+          "io.k8s.core.v1.events.deletecollection"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0005",
+          "Defense Evasion"
+        ],
+        "technique": [
+          "T1070",
+          "Indicator Removal"
+        ]
+      }
     }
   ]
 }
