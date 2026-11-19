@@ -174,11 +174,14 @@ External Secrets and the enrollment hook, so what reaches Slack is a person or a
 | CustomResourceDefinition created, changed or deleted outside GitOps | high |
 | Write accepted from an anonymous user | critical |
 
-The request body of an audit entry stays in the unindexed `event.original`. For workload and role binding
-writes, the root decoder of the custom space also lets the entry through to the `gke-requests` decoder
-([`gke-requests.json`](infrastructure/configs/wazuh/base/k8s-security/gke-requests.json)), which reads the
-body and tags `privileged`, `host_network`, `host_pid`, `host_ipc`, `host_path`, `cap_sys_admin` and
-`admin_role_binding` into `wazuh-events-v5-security`, where five rules of its own detector alert on them. A stolen service account
+The request body of an audit entry stays in the unindexed `event.original`. For workload and RBAC writes
+and for impersonated calls, the root decoder of the custom space also lets the entry through to the
+`gke-requests` decoder ([`gke-requests.json`](infrastructure/configs/wazuh/base/k8s-security/gke-requests.json)),
+which reads only the request part of the body (the response holds the whole object, also for a patch that
+changed nothing dangerous) and tags it into `wazuh-events-v5-security`: privileged containers, host
+namespaces, `hostPath`, `hostPort`, `nodeName`, shared process namespaces, `SYS_ADMIN` and other dangerous
+capabilities, bindings to admin roles, roles with wildcards, escalation verbs or sensitive resources, and
+impersonation. The rules of its own detector alert on these tags. A stolen service account
 token cannot be replayed from outside: the DNS endpoint accepts Google IAM credentials only and the IP
 endpoint only the node subnet.
 
@@ -293,6 +296,14 @@ resources (the Google Cloud rules), removed right after.
 | Node filesystem | a pod spec with a `hostPath` volume | GKE workload with a hostPath volume requested | high |
 | `SYS_ADMIN` | a container with `capabilities.add: [SYS_ADMIN]` | GKE workload with CAP_SYS_ADMIN requested | critical |
 | Admin role granted | `kubectl create clusterrolebinding x --clusterrole=cluster-admin …` (also `admin`, `edit`) | GKE binding to an admin role | critical |
+| Dangerous capability | a container with `capabilities.add` of `NET_RAW`, `NET_ADMIN`, `SYS_PTRACE`, `SYS_MODULE`, `DAC_READ_SEARCH`, `BPF` or `ALL` | GKE workload with a dangerous capability requested | high |
+| Scheduler bypassed, node ports or processes shared | a pod with `nodeName` (as `kubectl debug node/…` makes), `hostPort` or `shareProcessNamespace` | GKE workload pinned to a node or sharing host ports or processes | high |
+| Role with wildcards | a Role or ClusterRole with `verbs: ["*"]`, `resources: ["*"]` or `apiGroups: ["*"]` | GKE RBAC role with wildcard permissions | critical |
+| Escalation verbs | a Role or ClusterRole granting `bind`, `escalate` or `impersonate` | GKE RBAC role allows privilege escalation | critical |
+| Sensitive grants | a Role or ClusterRole on `secrets`, `pods/exec`, `nodes/proxy`, `serviceaccounts/token`, CSR approval or webhooks | GKE RBAC role grants sensitive access | high |
+| Impersonation | `kubectl --as=<user or service account> …` on a write | GKE impersonation used (the identity used is `user.target.name`) | high |
+| Token that never expires | a Secret of type `kubernetes.io/service-account-token` | GKE long-lived service account token created | critical |
+| Cluster-wide or scheduled backdoor | `kubectl create daemonset`-style manifest or a CronJob, outside GitOps | GKE DaemonSet or CronJob created outside GitOps | critical |
 | Events wiped | `kubectl delete --raw /apis/events.k8s.io/v1/namespaces/<ns>/events` | GKE events deleted | high |
 | Impersonation (`kubectl --as`) | any of the above with `--as=system:serviceaccount:argocd:argocd-application-controller` | the same rules: the audit log keeps the real caller | as above |
 
@@ -365,8 +376,10 @@ resources (the Google Cloud rules), removed right after.
 
 - Service account TokenRequests (`kubectl create token`): GKE writes them to neither the Admin Activity nor
   the Data Access log.
-- Kubernetes reads other than secrets: the Log Router keeps only secret reads, `nodes/proxy` and
-  TokenRequests from the Kubernetes Data Access log and drops the rest.
+- Kubernetes reads other than secrets, impersonated ones included: the Log Router keeps only secret reads,
+  `nodes/proxy` and TokenRequests from the Kubernetes Data Access log and drops the rest.
+- An untrusted image in a workload that never starts (zero replicas, a suspended CronJob): Falco checks the
+  image when a container starts, and no rule reads the image of an API request.
 - Port scans of pods that no NetworkPolicy isolates (only `wazuh`, `argocd` and `falco` have default-deny
   policies), of node IPs and of hosts outside the cluster: only connections a NetworkPolicy denies are logged.
 - Events deleted one by one (`kubectl delete events --all`) or through the core API collection: GKE audits
