@@ -1,0 +1,274 @@
+{
+  "integration": {
+    "title": "gke-requests",
+    "category": "security",
+    "description": "Request bodies of GKE audit entries for workload and role binding writes: privileged pods, host namespaces, host paths, SYS_ADMIN and bindings to admin roles."
+  },
+  "detector": {
+    "name": "gke-requests",
+    "indices": [
+      "wazuh-events-v5-security"
+    ],
+    "interval_minutes": 1
+  },
+  "decoders": [
+    {
+      "name": "decoder/gke-requests/0",
+      "title": "GKE workload and role binding request",
+      "parents": [
+        "decoder/custom-wazuh-message/0"
+      ],
+      "description": "Reads the request body of a GKE audit entry for a workload or role binding write and tags what makes it dangerous.",
+      "check": "$_tmp_json.integration == 'gcp' AND $_tmp_json.gcp.protoPayload.serviceName == 'k8s.io'",
+      "normalize": [
+        {
+          "map": [
+            {
+              "_gke": "rename($_tmp_json.gcp)"
+            },
+            {
+              "_tmp": "delete()"
+            },
+            {
+              "event.kind": "event"
+            },
+            {
+              "event.module": "gke"
+            },
+            {
+              "event.outcome": "success"
+            },
+            {
+              "event.code": "$_gke.protoPayload.methodName"
+            },
+            {
+              "user.name": "$_gke.protoPayload.authenticationInfo.principalEmail"
+            },
+            {
+              "source.ip": "$_gke.protoPayload.requestMetadata.callerIp"
+            },
+            {
+              "user_agent.original": "$_gke.protoPayload.requestMetadata.callerSuppliedUserAgent"
+            },
+            {
+              "cloud.project.id": "$_gke.resource.labels.project_id"
+            },
+            {
+              "orchestrator.type": "kubernetes"
+            },
+            {
+              "orchestrator.cluster.name": "$_gke.resource.labels.cluster_name"
+            },
+            {
+              "orchestrator.namespace": "$_gke.protoPayload.request.metadata.namespace"
+            },
+            {
+              "orchestrator.resource.name": "$_gke.protoPayload.request.metadata.name"
+            },
+            {
+              "orchestrator.resource.type": "$_gke.protoPayload.request.kind"
+            },
+            {
+              "message": "$_gke.protoPayload.resourceName"
+            }
+          ]
+        },
+        {
+          "check": "exists($_gke.protoPayload.status.code)",
+          "map": [
+            {
+              "event.outcome": "failure"
+            }
+          ]
+        },
+        {
+          "check": "contains($event.original, '\"privileged\": true')",
+          "map": [
+            {
+              "tags": "array_append(privileged)"
+            }
+          ]
+        },
+        {
+          "check": "contains($event.original, '\"hostNetwork\": true')",
+          "map": [
+            {
+              "tags": "array_append(host_network)"
+            }
+          ]
+        },
+        {
+          "check": "contains($event.original, '\"hostPID\": true')",
+          "map": [
+            {
+              "tags": "array_append(host_pid)"
+            }
+          ]
+        },
+        {
+          "check": "contains($event.original, '\"hostIPC\": true')",
+          "map": [
+            {
+              "tags": "array_append(host_ipc)"
+            }
+          ]
+        },
+        {
+          "check": "contains($event.original, '\"hostPath\": {')",
+          "map": [
+            {
+              "tags": "array_append(host_path)"
+            }
+          ]
+        },
+        {
+          "check": "contains($event.original, '\"SYS_ADMIN\"')",
+          "map": [
+            {
+              "tags": "array_append(cap_sys_admin)"
+            }
+          ]
+        },
+        {
+          "check": "regex_match($event.original, '\"roleRef\": [{][^}]*\"name\": \"(cluster-admin|admin|edit)\"')",
+          "map": [
+            {
+              "tags": "array_append(admin_role_binding)"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "trusted": {
+    "trusted_prefix": {
+      "user.name|startswith": [
+        "system:node:",
+        "system:kube-",
+        "system:apiserver",
+        "system:gke-",
+        "system:gcp-",
+        "system:anet-",
+        "system:pdcsi-",
+        "system:cloud-controller-manager",
+        "system:cluster-autoscaler",
+        "system:serviceaccount:kube-system:",
+        "system:serviceaccount:gke-",
+        "system:serviceaccount:argocd:",
+        "system:serviceaccount:cert-manager:",
+        "system:serviceaccount:external-secrets:",
+        "system:addon-manager"
+      ]
+    },
+    "trusted_robot": {
+      "user.name|endswith": "@container-engine-robot.iam.gserviceaccount.com"
+    },
+    "trusted_exact": {
+      "user.name": [
+        "kubelet-nodepool-bootstrap",
+        "system:serviceaccount:wazuh:wazuh-enrollment"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "title": "GKE privileged workload requested",
+      "level": "critical",
+      "description": "A pod or workload with a privileged container was requested outside GitOps; a privileged container owns the node.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": "privileged"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1611",
+          "Escape to Host"
+        ]
+      }
+    },
+    {
+      "title": "GKE workload with host namespaces requested",
+      "level": "critical",
+      "description": "A pod or workload in the host network, PID or IPC namespace was requested outside GitOps.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": [
+          "host_network",
+          "host_pid",
+          "host_ipc"
+        ]
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1611",
+          "Escape to Host"
+        ]
+      }
+    },
+    {
+      "title": "GKE workload with a hostPath volume requested",
+      "level": "high",
+      "description": "A pod or workload that mounts a path of the node was requested outside GitOps.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": "host_path"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1611",
+          "Escape to Host"
+        ]
+      }
+    },
+    {
+      "title": "GKE workload with CAP_SYS_ADMIN requested",
+      "level": "critical",
+      "description": "A container with the SYS_ADMIN capability was requested outside GitOps, nearly as strong as privileged.",
+      "selection": {
+        "event.code|startswith": "io.k8s.",
+        "tags": "cap_sys_admin"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1611",
+          "Escape to Host"
+        ]
+      }
+    },
+    {
+      "title": "GKE binding to an admin role",
+      "level": "critical",
+      "description": "A RoleBinding or ClusterRoleBinding to cluster-admin, admin or edit was created or changed outside GitOps.",
+      "selection": {
+        "event.code|startswith": "io.k8s.authorization.rbac.",
+        "tags": "admin_role_binding"
+      },
+      "mitre": {
+        "tactic": [
+          "TA0004",
+          "Privilege Escalation"
+        ],
+        "technique": [
+          "T1098",
+          "Account Manipulation"
+        ]
+      }
+    }
+  ]
+}
