@@ -4,6 +4,7 @@ env    = "staging"
 
 topics = {
   "siem-gcp-logs" = {
+    workload_identity_publishers = [{ namespace = "falco", service_account = "falco-falcosidekick" }]
     subscriptions = {
       "siem-wazuh" = {
         ack_deadline_seconds       = 60

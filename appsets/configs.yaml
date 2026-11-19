@@ -55,6 +55,13 @@ spec:
                   value: {{ index .metadata.annotations "platform/volume-kms-key" }}
             - target:
                 kind: ConfigMap
+                name: falcosidekick-gcp
+              patch: |-
+                - op: replace
+                  path: /data/project_id
+                  value: {{ index .metadata.annotations "platform/project-id" }}
+            - target:
+                kind: ConfigMap
                 name: wazuh-gcp-collector-settings
               patch: |-
                 - op: replace

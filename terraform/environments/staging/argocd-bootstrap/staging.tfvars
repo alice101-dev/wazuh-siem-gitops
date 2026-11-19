@@ -23,4 +23,5 @@ enabled_components = [
   "external-secrets",
   "storage",
   "wazuh",
+  "falco",
 ]

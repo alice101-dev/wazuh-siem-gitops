@@ -24,6 +24,9 @@ module "pubsub" {
   topics = {
     for t, topic in var.topics : "${var.env}-${t}" => {
       message_retention_duration = topic.message_retention_duration
+      iam = [
+        for w in topic.workload_identity_publishers : { role = "roles/pubsub.publisher", member = "${local.wi_subject}/ns/${w.namespace}/sa/${w.service_account}" }
+      ]
       subscriptions = {
         for s, sub in topic.subscriptions : "${var.env}-${s}" => {
           ack_deadline_seconds       = sub.ack_deadline_seconds

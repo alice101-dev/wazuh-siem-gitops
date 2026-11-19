@@ -1,0 +1,5 @@
+falcosidekick:
+  config:
+    gcp:
+      pubsub:
+        topic: staging-siem-gcp-logs

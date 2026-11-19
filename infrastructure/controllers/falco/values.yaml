@@ -1,0 +1,79 @@
+driver:
+  kind: modern_ebpf
+  modernEbpf:
+    leastPrivileged: true
+
+tolerations:
+  - operator: Exists
+
+resources:
+  requests: { cpu: 50m, memory: 256Mi }
+  limits: { memory: 768Mi }
+
+collectors:
+  containerEngine:
+    engines:
+      docker: { enabled: false }
+      podman: { enabled: false }
+      lxc: { enabled: false }
+      libvirt_lxc: { enabled: false }
+      bpm: { enabled: false }
+
+falcoctl:
+  artifact:
+    follow:
+      enabled: false
+
+falco:
+  priority: notice
+  json_output: true
+  json_include_output_property: true
+  json_include_output_fields_property: true
+  json_include_tags_property: true
+  append_output:
+    - suggested_output: true
+    - extra_fields:
+        - wazuh_integration: "falco"
+        - wazuh_k8s_ns: "%k8s.ns.name"
+        - wazuh_k8s_pod: "%k8s.pod.name"
+        - wazuh_container_id: "%container.id"
+        - wazuh_container_name: "%container.name"
+        - wazuh_container_image: "%container.image.repository"
+        - wazuh_proc_name: "%proc.name"
+        - wazuh_proc_cmdline: "%proc.cmdline"
+        - wazuh_proc_exepath: "%proc.exepath"
+        - wazuh_proc_pid: "%proc.pid"
+        - wazuh_proc_pname: "%proc.pname"
+        - wazuh_user_name: "%user.name"
+        - wazuh_fd_name: "%fd.name"
+        - wazuh_evt_type: "%evt.type"
+
+falcosidekick:
+  enabled: true
+  replicaCount: 1
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1234
+    fsGroup: 1234
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+  webui:
+    enabled: false
+  config:
+    gcp:
+      pubsub:
+        minimumpriority: notice
+    extraEnv:
+      - name: GCP_PUBSUB_PROJECTID
+        valueFrom:
+          configMapKeyRef:
+            name: falcosidekick-gcp
+            key: project_id

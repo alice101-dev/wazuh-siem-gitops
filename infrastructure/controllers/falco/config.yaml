@@ -1,0 +1,4 @@
+chart: falco
+repoURL: https://falcosecurity.github.io/charts
+version: 9.2.2
+namespace: falco

@@ -1,9 +1,11 @@
-"""Reconcile the GKE Kubernetes detections and dashboard of Wazuh from rules.json and dashboard.json.
+"""Reconcile the custom detections and the dashboard of Wazuh from the content packs and dashboard.json.
 
-Rules live in a user-managed integration of the content manager: they are written to the draft
-space, promoted draft -> test -> custom, and run by a Ruleset Management detector of their own,
-because the standard detectors only run standard rules. Rules removed from rules.json are deleted.
-The dashboard is written through the Wazuh dashboard saved objects API.
+Each content pack (every *.json here with an "integration" key) is a user-managed integration of
+the content manager with its decoders and Sigma rules. They are written to the draft space,
+promoted draft -> test -> custom, and run by a Ruleset Management detector of their own, because
+the standard detectors only run standard rules. A pack may name the root decoder of the custom
+space policy. Decoders and rules removed from a pack are deleted. The dashboard is written through
+the Wazuh dashboard saved objects API.
 """
 
 import base64
@@ -25,6 +27,8 @@ SAVED_OBJECT_PREFIX = "gke-k8s-"
 INDEX_PATTERNS = {
     "events": "wazuh-events-v5-cloud-services*",
     "findings": "wazuh-findings-v5-cloud-services*",
+    "security-events": "wazuh-events-v5-security*",
+    "security-findings": "wazuh-findings-v5-security*",
 }
 
 
@@ -114,7 +118,7 @@ def desired_rule(rule, config):
     detection = {"selection": rule["selection"]}
     excluded = dict(rule.get("exclude", {}))
     if rule.get("trusted", True):
-        excluded.update(config["trusted"])
+        excluded.update(config.get("trusted", {}))
     detection.update(excluded)
     condition = "selection"
     if excluded:
@@ -167,6 +171,85 @@ def reconcile_rules(api, integration_id, config):
             log(f"Rule '{title}' deleted")
 
 
+def desired_decoder(decoder):
+    resource = {
+        "name": decoder["name"],
+        "enabled": True,
+        "metadata": {"title": decoder["title"], "author": AUTHOR, "description": decoder["description"]},
+        "normalize": decoder["normalize"],
+    }
+    for key in ("parents", "check"):
+        if key in decoder:
+            resource[key] = decoder[key]
+    return resource
+
+
+def decoder_differs(stored, resource):
+    for key in ("enabled", "parents", "check", "normalize"):
+        if canonical(stored.get(key)) != canonical(resource.get(key)):
+            return True
+    meta = stored.get("metadata", {})
+    return any(meta.get(k) != resource["metadata"][k] for k in ("title", "author", "description"))
+
+
+def reconcile_decoders(api, integration_id, pack):
+    """Create, update and delete the draft decoders of the pack's integration; returns name -> id."""
+    _, integration = api.call("GET", f"/wazuh-threatintel-integrations/_doc/{integration_id}")
+    linked = integration.get("_source", {}).get("document", {}).get("decoders") or []
+    stored = {}
+    for decoder_id in linked:
+        status, doc = api.call("GET", f"/wazuh-threatintel-decoders/_doc/{decoder_id}", ok=(200, 404))
+        if status == 200:
+            stored[doc["_source"]["document"]["name"]] = (decoder_id, doc["_source"]["document"])
+    ids = {}
+    for decoder in pack.get("decoders", []):  # in order: parents before children
+        resource = desired_decoder(decoder)
+        name = decoder["name"]
+        if name not in stored:
+            _, result = api.call("POST", "/_plugins/_content_manager/decoders",
+                                 {"integration": integration_id, "resource": resource})
+            ids[name] = result["message"]
+            log(f"Decoder {name} created ({result['message']})")
+            continue
+        decoder_id, document = stored[name]
+        ids[name] = decoder_id
+        if decoder_differs(document, resource):
+            api.call("PUT", f"/_plugins/_content_manager/decoders/{decoder_id}", {"resource": resource})
+            log(f"Decoder {name} updated")
+    wanted = {decoder["name"] for decoder in pack.get("decoders", [])}
+    for name, (decoder_id, _) in reversed(list(stored.items())):  # children before parents
+        if name not in wanted:
+            api.call("DELETE", f"/_plugins/_content_manager/decoders/{decoder_id}")
+            log(f"Decoder {name} deleted")
+    return ids
+
+
+def ensure_root_decoder(api, decoder_id):
+    """Point the draft policy at the root decoder, keeping every other policy setting."""
+    hits = search(api, "wazuh-threatintel-policies", {"term": {"space.name": "draft"}}, size=1)
+    policy = hits[0]["_source"]["document"]
+    if policy.get("root_decoder") == decoder_id:
+        return
+    meta = policy.get("metadata", {})
+    api.call("PUT", "/_plugins/_content_manager/policy/draft", {"resource": {
+        "metadata": {
+            "title": meta.get("title") or "Custom space",
+            "author": meta.get("author") or AUTHOR,
+            "description": meta.get("description") or "Custom space",
+            "documentation": meta.get("documentation") or "",
+            "references": meta.get("references") or [],
+        },
+        "root_decoder": decoder_id,
+        "integrations": policy.get("integrations") or [],
+        "filters": policy.get("filters") or [],
+        "enrichments": policy.get("enrichments") or [],
+        "enabled": policy.get("enabled", True),
+        "index_unclassified_events": policy.get("index_unclassified_events", False),
+        "index_discarded_events": policy.get("index_discarded_events", False),
+    }})
+    log(f"Draft policy root decoder set to {decoder_id}")
+
+
 def promote(api, space, operations=("add", "update", "remove"), rounds=3):
     """Promote the changes of a space whose operation is in operations; the policy update rides along.
 
@@ -208,7 +291,7 @@ def reconcile_detector(api, config):
         "enabled": True,
         "schedule": {"period": {"interval": spec["interval_minutes"], "unit": "MINUTES"}},
         "inputs": [{"detector_input": {
-            "description": "GKE Kubernetes audit detections from rules.json",
+            "description": f"Custom rules of the {product} content pack",
             "indices": spec["indices"],
             "custom_rules": [{"id": rule_id} for rule_id in rule_ids],
             "pre_packaged_rules": [],
@@ -220,7 +303,7 @@ def reconcile_detector(api, config):
                         {"size": 100, "query": {"match_all": {}}})
     existing = [hit for hit in found.get("hits", {}).get("hits", []) if detector_name(hit) == spec["name"]]
     if not rule_ids:
-        log("No custom rules in the custom space; detector left unchanged")
+        log(f"No {product} rules in the custom space; detector left unchanged")
         return
     if not existing:
         _, result = api.call("POST", "/_plugins/_security_analytics/detectors", body)
@@ -372,9 +455,19 @@ def reconcile_dashboard(api, spec):
                 log(f"Removed {object_type} {item['id']}")
 
 
+def load_packs():
+    packs = []
+    for name in sorted(os.listdir(CONFIG_DIR)):
+        if name.endswith(".json") and name != "dashboard.json":
+            with open(os.path.join(CONFIG_DIR, name)) as f:
+                pack = json.load(f)
+            if "integration" in pack:
+                packs.append(pack)
+    return packs
+
+
 def main():
-    with open(os.path.join(CONFIG_DIR, "rules.json")) as f:
-        config = json.load(f)
+    packs = load_packs()
     with open(os.path.join(CONFIG_DIR, "dashboard.json")) as f:
         dashboard = json.load(f)
     password = admin_password()
@@ -382,13 +475,18 @@ def main():
     dashboards = Api(DASHBOARD, password, {"osd-xsrf": "true", "securitytenant": "global"})
 
     wait_until("Content manager", lambda: indexer.call("GET", "/_plugins/_content_manager/policy/resources?space=draft"))
-    integration_id = ensure_integration(indexer, config["integration"])
-    reconcile_rules(indexer, integration_id, config)
+    for pack in packs:
+        integration_id = ensure_integration(indexer, pack["integration"])
+        decoder_ids = reconcile_decoders(indexer, integration_id, pack)
+        if "root_decoder" in pack:
+            ensure_root_decoder(indexer, decoder_ids[pack["root_decoder"]])
+        reconcile_rules(indexer, integration_id, pack)
     promote(indexer, "draft")
-    # A removal may not leave the detector without rules: add and update first, point the
-    # detector at the rules of rules.json, then remove what is gone.
+    # A removal may not leave a detector without rules: add and update first, point each
+    # detector at the rules of its pack, then remove what is gone.
     promote(indexer, "test", ("add", "update"))
-    reconcile_detector(indexer, config)
+    for pack in packs:
+        reconcile_detector(indexer, pack)
     promote(indexer, "test", ("remove",))
 
     wait_until("Wazuh dashboard", lambda: dashboards.call("GET", "/api/status"))

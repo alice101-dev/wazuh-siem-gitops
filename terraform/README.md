@@ -60,6 +60,9 @@ Cloud Audit Logs, firewall logs ──► sink staging-siem-wazuh ──► topi
   [`pubsub/staging.tfvars`](environments/staging/pubsub/staging.tfvars)). There is no Google service
   account and no key. The Pub/Sub service agent holds the subscriber role as well, to move messages to
   the dead-letter topic.
+- Falcosidekick publishes the Falco alerts to the same topic as the Kubernetes ServiceAccount
+  `falco/falco-falcosidekick`: `roles/pubsub.publisher` on the topic through Workload Identity
+  (`workload_identity_publishers` in [`pubsub/staging.tfvars`](environments/staging/pubsub/staging.tfvars)).
 
 ## Encryption (Cloud KMS)
 

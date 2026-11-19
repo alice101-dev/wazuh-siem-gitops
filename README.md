@@ -33,11 +33,13 @@ flowchart LR
   end
 
   subgraph gke["GKE staging-siem · private nodes · Dataplane V2"]
+    falco["Falco DaemonSet<br/>eBPF, every node"]
     subgraph general["pool general · Spot"]
       argo["Argo CD"]
       eso["External Secrets"]
       cm["cert-manager"]
       collector["GCP collector<br/>Wazuh agent"]
+      sidekick["Falcosidekick"]
       dash["dashboard"]
     end
     subgraph siem["pool siem · Spot · tainted"]
@@ -51,6 +53,7 @@ flowchart LR
   slack["Slack #wazuh-alert"]
 
   sub -->|Workload Identity| collector
+  falco --> sidekick -->|Workload Identity| topic
   collector -->|HTTPS 1517| master & workers
   master & workers -->|events| idata
   icm ---|cluster state| idata
@@ -68,6 +71,7 @@ flowchart LR
 | Manager master / worker | 1 / 1, scale out workers by `replicas` | pool `siem` | 10 Gi `pd-balanced-cmek` |
 | Dashboard | 1, stateless | pool `general` | — |
 | GCP collector | 1 | pool `general` | 1 Gi `pd-standard-cmek`, agent identity |
+| Falco / Falcosidekick | 1 per node / 1 | every node / pool `general` | — |
 
 Shards have no replica: the single data node keeps every shard on its persistent disk, so a Spot preemption stops the indexer until the pod is rescheduled, and no data is lost. With more data nodes, raising `cluster.default_number_of_replicas` in [`indexer.yaml`](infrastructure/configs/wazuh/base/indexer.yaml) gives new indices a replica on another node.
 
@@ -119,7 +123,7 @@ GKE runs the Kubernetes API server, so its audit log is not a file on a node: GK
 Logs, and the same sink that carries the Google Cloud audit logs brings the Admin Activity entries of
 `k8s.io` (every write to the API) to Wazuh, decoded by the `gcp` integration.
 
-[`k8s-security/rules.json`](infrastructure/configs/wazuh/base/k8s-security/rules.json) holds Sigma rules on
+[`k8s-security/gke-kubernetes.json`](infrastructure/configs/wazuh/base/k8s-security/gke-kubernetes.json) holds Sigma rules on
 those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
 promotes them draft → test → custom and points a Ruleset Management detector of the same name at
 `wazuh-events-v5-cloud-services`; a rule removed from the file is deleted. Every rule except the anonymous
@@ -165,6 +169,35 @@ The same hook writes the **GKE Kubernetes security** dashboard: findings by leve
 actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service
 account and certificate operations, and write trends by method and namespace.
 
+## Runtime security (Falco)
+
+Audit logs only show calls to the API. What runs inside a container (a shell, a dropped binary, a read of
+`/etc/shadow`, a reverse shell) is seen by Falco, a DaemonSet on every node, including the tainted `siem`
+pool. It uses the modern eBPF probe in least-privileged mode: the capabilities `BPF`, `PERFMON`,
+`SYS_RESOURCE` and `SYS_PTRACE` instead of a privileged container, which is why the `falco` namespace
+enforces the `privileged` Pod Security level.
+
+Falco sends its alerts to Falcosidekick, which publishes them to the same Pub/Sub topic as the audit logs
+with Workload Identity (`roles/pubsub.publisher` on the topic for `falco/falco-falcosidekick`, no key);
+the GCP collector brings them to Wazuh with the rest. Falco adds `wazuh_*` fields to each alert (namespace,
+pod, container, image, process, command line, user, file), so no node runs a Wazuh agent.
+
+[`k8s-security/falco.json`](infrastructure/configs/wazuh/base/k8s-security/falco.json) is the second
+content pack of the same Sync hook. Its root decoder becomes the root of the custom space policy and lets
+through only the messages that carry `wazuh_integration: falco`; the `falco` decoder maps them to the
+Wazuh Common Schema (`rule.name`, `log.level`, `process.*`, `container.*`, `orchestrator.*`, `file.path`)
+into `wazuh-events-v5-security`, and a `falco` detector turns them into findings by Falco priority:
+
+| Falco priority | Finding level |
+|---|---|
+| Emergency, Alert, Critical | critical |
+| Error, Warning | high |
+| Notice | medium |
+
+The Slack message of a Falco finding carries the Falco rule, the process and user, the container and
+image, the namespace and pod, and the Falco output. The standard `gcp` decoder also keeps a generic copy
+of each alert in `wazuh-events-v5-cloud-services`, without findings.
+
 ## Repository layout
 
 ```text
@@ -173,7 +206,7 @@ terraform/        # Google Cloud: APIs, KMS, VPC, NAT, GKE, Artifact Registry, a
 bootstrap/        # root Application applied by Terraform
 appsets/          # AppProject and the controllers and configs ApplicationSets
 infrastructure/
-  controllers/    # Helm charts: cert-manager, external-secrets
+  controllers/    # Helm charts: cert-manager, external-secrets, falco
   configs/        # Kustomize: namespaces, secret store, CMEK StorageClasses, wazuh
 images/           # GCP collector image, built and pushed with make -C images release
 ```
@@ -198,4 +231,4 @@ kubectl -n wazuh get secret wazuh-credentials -o jsonpath='{.data.indexer\.env}'
 Wazuh **5.0.0-rc2**, the latest 5.x release, pinned in
 [`infrastructure/configs/wazuh/base/kustomization.yaml`](infrastructure/configs/wazuh/base/kustomization.yaml)
 and in the collector `Dockerfile`; moving to 5.0.0 GA is a tag change in both. GKE 1.35, Argo CD 3.5,
-cert-manager 1.21, External Secrets 2.15, Terraform 1.15.
+cert-manager 1.21, External Secrets 2.15, Falco 0.45 (chart 9.2), Terraform 1.15.
