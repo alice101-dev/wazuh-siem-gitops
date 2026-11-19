@@ -118,7 +118,7 @@
               "orchestrator.resource.name": "$_falco.output_fields.wazuh_k8s_pod"
             },
             {
-              "user.id": "to_string($_falco.output_fields.wazuh_user_uid)"
+              "user.id": "$_falco.output_fields.wazuh_user_uid"
             }
           ]
         },
