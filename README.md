@@ -236,6 +236,11 @@ navigation bar, filter lists and the same colour per level:
 | **Falco runtime** | runtime findings, alerts by priority, rule, workload and image, the processes and files behind them |
 | **Google Cloud audit** | findings of the Google Cloud rules, API calls by service, people by method and origin, denied calls |
 
+Every panel, query and colour is YAML in Git; nothing is built by hand in the dashboard UI, and a panel
+removed from the file is removed from the dashboard on the next sync.
+
+![SIEM overview dashboard: critical and high tiles in red, findings over time by level and by layer, rules matched with their Falco rule, and MITRE ATT&CK techniques](docs/screenshots/wazuh-siem-overview-dashboard.png)
+
 ## Runtime security (Falco)
 
 Audit logs only show calls to the API. What runs inside a container (a shell, a dropped binary, a read of
