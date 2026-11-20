@@ -487,6 +487,18 @@ customRules:
       override:
         condition: append
 
+    # Argo CD and the Wazuh setup hooks talk to the API server by design.
+    - rule: Contact K8S API Server From Container
+      condition: and not wazuh_platform_container
+      override:
+        condition: append
+
+    # GKE image streaming (gcfsd) unpacks image layers on the node, /etc/skel shell files included.
+    - rule: Modify Shell Configuration File
+      condition: and not (proc.name = gcfsd-v2 and fd.name startswith /var/lib/containerd/)
+      override:
+        condition: append
+
     # kubectl cp out of a container is data leaving the cluster: raised from Notice so it reaches Slack.
     - rule: Exfiltrating Artifacts via Kubernetes Control Plane
       override:

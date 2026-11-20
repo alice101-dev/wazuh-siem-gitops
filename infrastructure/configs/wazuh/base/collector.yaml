@@ -92,6 +92,10 @@ spec:
             items:
               - key: ca.crt
                 path: ca.crt
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
       containers:
         - name: enroll
           image: curlimages/curl:8.23.0
@@ -100,6 +104,7 @@ spec:
             - -c
             - |
               set -eu
+              umask 077
               api=https://wazuh-api.wazuh.svc.cluster.local:55000
               kube=https://kubernetes.default.svc
               sa=/var/run/secrets/kubernetes.io/serviceaccount
@@ -108,13 +113,16 @@ spec:
                 echo "Wazuh API not ready yet, retrying in 15s"
                 sleep 15
               done
+              # Bearer tokens go in header files, never on the command line where every process and Falco see them.
+              printf 'Authorization: Bearer %s\n' "$jwt" > /tmp/api-headers
+              printf 'Authorization: Bearer %s\n' "$(cat "$sa/token")" > /tmp/kube-headers
               response=$(curl -sSf --cacert /ca/ca.crt -X POST "$api/agents/enrollment-tokens" \
-                -H "Authorization: Bearer $jwt" -H "Content-Type: application/json" \
+                -H @/tmp/api-headers -H "Content-Type: application/json" \
                 -d '{"address": "wazuh-agents.wazuh.svc.cluster.local", "embed_ca": true, "ttl": "24h", "max_uses": 5, "description": "GCP collector"}')
               token=$(printf '%s' "$response" | sed -n 's/.*"token": *"\([^"]*\)".*/\1/p')
               [ -n "$token" ] || { echo "No token in the API response"; exit 1; }
               printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: wazuh-gcp-collector-enrollment\ndata:\n  token: %s\n' "$(printf '%s' "$token" | base64 | tr -d '\n')" |
-                curl -sSf -o /dev/null --cacert "$sa/ca.crt" -H "Authorization: Bearer $(cat "$sa/token")" \
+                curl -sSf -o /dev/null --cacert "$sa/ca.crt" -H @/tmp/kube-headers \
                   -H "Content-Type: application/apply-patch+yaml" -X PATCH --data-binary @- \
                   "$kube/api/v1/namespaces/$(cat "$sa/namespace")/secrets/wazuh-gcp-collector-enrollment?fieldManager=wazuh-enrollment&force=true"
               echo "Enrollment token stored in Secret wazuh-gcp-collector-enrollment"
@@ -129,6 +137,7 @@ spec:
           volumeMounts:
             - { name: credentials, mountPath: /credentials, readOnly: true }
             - { name: ca, mountPath: /ca, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
 ---
 apiVersion: apps/v1
 kind: StatefulSet
