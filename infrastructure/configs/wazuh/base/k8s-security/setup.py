@@ -1,4 +1,4 @@
-"""Reconcile the custom detections and the dashboard of Wazuh from the content packs and dashboard.json.
+"""Reconcile the custom detections and the dashboards of Wazuh from the content packs and dashboards.json.
 
 The packs and the dashboard are YAML in Git; an init container converts them to JSON in CONFIG_DIR,
 so this script needs nothing beyond the standard library.
@@ -7,8 +7,8 @@ Each content pack (every *.json there with an "integration" key) is a user-manag
 the content manager with its decoders and Sigma rules. They are written to the draft space,
 promoted draft -> test -> custom, and run by a Ruleset Management detector of their own, because
 the standard detectors only run standard rules. A pack may name the root decoder of the custom
-space policy. Decoders and rules removed from a pack are deleted. The dashboard is written through
-the Wazuh dashboard saved objects API.
+space policy. Decoders and rules removed from a pack are deleted. The dashboards are written through
+the Wazuh dashboard saved objects API; a managed dashboard or panel that is gone from Git is deleted.
 """
 
 import base64
@@ -32,6 +32,8 @@ INDEX_PATTERNS = {
     "findings": "wazuh-findings-v5-cloud-services*",
     "security-events": "wazuh-events-v5-security*",
     "security-findings": "wazuh-findings-v5-security*",
+    "network-findings": "wazuh-findings-v5-network-activity*",
+    "all-findings": "wazuh-findings-v5*",
 }
 
 
@@ -329,70 +331,106 @@ def reconcile_detector(api, config):
     log(f"Detector {spec['name']} ({detector_id}) updated with {len(rule_ids)} rules")
 
 
-# ---------------------------------------------------------------- dashboard
+# ---------------------------------------------------------------- dashboards
+
+MANAGED = "Managed from Git."
+# The same colour for a level on every chart: Wazuh finding levels and Falco priorities.
+LEVEL_COLORS = {
+    "critical": "#BD271E", "high": "#E7664C", "medium": "#D6BF57", "low": "#6092C0", "informational": "#98A2B3",
+    "Emergency": "#7A1E14", "Alert": "#9E2A1E", "Critical": "#BD271E", "Error": "#E7664C", "Warning": "#D6BF57",
+    "Notice": "#6092C0", "Informational": "#98A2B3", "Debug": "#C5CAD3",
+}
+UI_STATE = json.dumps({"vis": {"colors": LEVEL_COLORS}})
 
 
-def search_source(query):
-    return json.dumps({
-        "query": {"query": query, "language": "kuery"},
-        "filter": [],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-    })
+def search_source(query, indexed=True):
+    source = {"query": {"query": query, "language": "kuery"}, "filter": []}
+    if indexed:
+        source["indexRefName"] = "kibanaSavedObjectMeta.searchSourceJSON.index"
+    return json.dumps(source)
 
 
 def terms_agg(agg_id, schema, spec):
     params = {
         "field": spec["field"], "size": spec.get("size", 10), "order": "desc", "orderBy": "1",
-        "otherBucket": False, "otherBucketLabel": "Other", "missingBucket": False, "missingBucketLabel": "Missing",
+        "otherBucket": False, "otherBucketLabel": "Other",
+        "missingBucket": "missing" in spec, "missingBucketLabel": spec.get("missing", "Missing"),
     }
     if "label" in spec:
         params["customLabel"] = spec["label"]
     return {"id": agg_id, "enabled": True, "type": "terms", "schema": schema, "params": params}
 
 
+def filters_agg(agg_id, schema, layers):
+    return {"id": agg_id, "enabled": True, "type": "filters", "schema": schema, "params": {"filters": [
+        {"input": {"query": layer["query"], "language": "kuery"}, "label": layer["label"]} for layer in layers]}}
+
+
 COUNT = {"id": "1", "enabled": True, "type": "count", "schema": "metric", "params": {}}
+DATE_HISTOGRAM = {"id": "2", "enabled": True, "type": "date_histogram", "schema": "segment", "params": {
+    "field": "@timestamp", "useNormalizedEsInterval": True, "scaleMetricValues": False, "interval": "auto",
+    "drop_partials": False, "min_doc_count": 1, "extended_bounds": {}}}
 
 
-def axis_params(chart_type, horizontal=False):
+def axis_params(chart_type, horizontal=False, stacked=False):
     category = {"id": "CategoryAxis-1", "type": "category", "position": "left" if horizontal else "bottom", "show": True,
                 "style": {}, "scale": {"type": "linear"},
                 "labels": {"show": True, "rotate": 0, "filter": not horizontal, "truncate": 100}, "title": {}}
     value = {"id": "ValueAxis-1", "name": "LeftAxis-1", "type": "value", "position": "bottom" if horizontal else "left",
              "show": True, "style": {}, "scale": {"type": "linear", "mode": "normal"},
              "labels": {"show": True, "rotate": 0, "filter": False, "truncate": 100}, "title": {"text": "Count"}}
-    series = {"show": True, "type": "histogram" if horizontal else chart_type, "mode": "normal",
+    series = {"show": True, "type": chart_type, "mode": "stacked" if stacked else "normal",
               "data": {"label": "Count", "id": "1"}, "valueAxis": "ValueAxis-1",
               "drawLinesBetweenPoints": True, "lineWidth": 2, "interpolate": "linear", "showCircles": True}
-    return {"type": "histogram" if horizontal else chart_type, "grid": {"categoryLines": False},
+    return {"type": chart_type, "grid": {"categoryLines": False},
             "categoryAxes": [category], "valueAxes": [value], "seriesParams": [series],
             "addTooltip": True, "addLegend": True, "legendPosition": "right", "times": [], "addTimeMarker": False,
             "labels": {"show": False}, "thresholdLine": {"show": False, "value": 10, "width": 1, "style": "full", "color": "#E7664C"}}
 
 
-def vis_state(panel):
+def metric_params(alert):
+    # An alert tile is green at zero and red from one up; other tiles stay neutral.
+    return {"type": "metric", "addTooltip": True, "addLegend": False, "metric": {
+        "percentageMode": False, "useRanges": False, "colorSchema": "Green to Red",
+        "metricColorMode": "Background" if alert else "None",
+        "colorsRange": [{"from": 0, "to": 1}, {"from": 1, "to": 1000000000}], "labels": {"show": True},
+        "invertColors": False, "style": {"bgFill": "#000", "bgColor": False, "labelColor": False, "subText": "", "fontSize": 40}}}
+
+
+def controls_params(panel):
+    controls = [{"id": str(n), "fieldName": c["field"], "label": c["label"], "type": "list", "parent": "",
+                 "indexPatternRefName": f"control_{n}_index_pattern",
+                 "options": {"type": "terms", "multiselect": True, "dynamicOptions": True, "size": 10, "order": "desc"}}
+                for n, c in enumerate(panel["controls"])]
+    return {"controls": controls, "updateFiltersOnChange": True, "useTimeFilter": True, "pinFilters": False}
+
+
+def vis_state(panel, layers):
     kind = panel["type"]
-    if kind == "metric":
+    vis_type = kind
+    if kind == "markdown":
+        aggs, params = [], {"markdown": panel["markdown"], "openLinksInNewTab": False, "fontSize": 12}
+    elif kind == "controls":
+        vis_type, aggs, params = "input_control_vis", [], controls_params(panel)
+    elif kind == "metric":
         aggs = []
         for number, metric in enumerate(panel["metrics"], start=1):
             params = {"customLabel": metric["label"]}
             if "field" in metric:
                 params["field"] = metric["field"]
             aggs.append({"id": str(number), "enabled": True, "type": metric["type"], "schema": "metric", "params": params})
-        params = {"type": "metric", "addTooltip": True, "addLegend": False, "metric": {
-            "percentageMode": False, "useRanges": False, "colorSchema": "Green to Red", "metricColorMode": "None",
-            "colorsRange": [{"from": 0, "to": 10000}], "labels": {"show": True}, "invertColors": False,
-            "style": {"bgFill": "#000", "bgColor": False, "labelColor": False, "subText": "", "fontSize": 36}}}
+        params = metric_params(panel.get("alert", False))
     elif kind == "pie":
-        aggs = [COUNT, terms_agg("2", "segment", panel["terms"][0])]
+        segment = filters_agg("2", "segment", layers) if panel.get("layers") else terms_agg("2", "segment", panel["terms"][0])
+        aggs = [COUNT, segment]
         params = {"type": "pie", "addTooltip": True, "addLegend": True, "legendPosition": "right", "isDonut": True,
-                  "labels": {"show": False, "values": True, "last_level": True, "truncate": 100}}
-    elif kind == "line":
-        aggs = [COUNT, {"id": "2", "enabled": True, "type": "date_histogram", "schema": "segment", "params": {
-            "field": "@timestamp", "useNormalizedEsInterval": True, "scaleMetricValues": False, "interval": "auto",
-            "drop_partials": False, "min_doc_count": 1, "extended_bounds": {}}}]
+                  "labels": {"show": True, "values": True, "last_level": True, "truncate": 100}}
+    elif kind in ("line", "bar"):
+        aggs = [COUNT, DATE_HISTOGRAM]
         if "split" in panel:
             aggs.append(terms_agg("3", "group", panel["split"]))
-        params = axis_params("line")
+        vis_type = "line" if kind == "line" else "histogram"
+        params = axis_params(vis_type, stacked=kind == "bar")
     elif kind == "table":
         aggs = [COUNT] + [terms_agg(str(n), "bucket", t) for n, t in enumerate(panel["terms"], start=2)]
         params = {"perPage": 10, "showPartialRows": False, "showMetricsAtAllLevels": False,
@@ -401,59 +439,90 @@ def vis_state(panel):
     elif kind == "horizontal_bar":
         aggs = [COUNT, terms_agg("2", "segment", panel["terms"][0])]
         params = axis_params("histogram", horizontal=True)
+        params["addLegend"] = False
     else:
         raise ValueError("unknown panel type " + kind)
-    return json.dumps({"title": panel["title"], "type": kind, "params": params, "aggs": aggs})
+    return json.dumps({"title": panel.get("title", ""), "type": vis_type, "params": params, "aggs": aggs})
+
+
+def navigation(spec, current):
+    links = [f"**{d['nav']}**" if d["id"] == current["id"] else f"[{d['nav']}](#/view/{d['id']})"
+             for d in spec["dashboards"]]
+    return "  ·  ".join(links) + "\n\n" + current["intro"]
+
+
+def panel_object(panel, spec):
+    """The saved object of one panel and the index pattern it reads, if any."""
+    object_id = SAVED_OBJECT_PREFIX + panel["id"]
+    if panel["type"] == "markdown":
+        return {"type": "visualization", "id": object_id, "references": [], "attributes": {
+            "title": "", "description": "", "version": 1, "uiStateJSON": "{}", "visState": vis_state(panel, []),
+            "kibanaSavedObjectMeta": {"searchSourceJSON": search_source("", indexed=False)}}}
+    pattern = INDEX_PATTERNS[panel["index"]]
+    if panel["type"] == "controls":
+        return {"type": "visualization", "id": object_id, "attributes": {
+            "title": "", "description": "", "version": 1, "uiStateJSON": "{}", "visState": vis_state(panel, []),
+            "kibanaSavedObjectMeta": {"searchSourceJSON": search_source("", indexed=False)}},
+            "references": [{"name": f"control_{n}_index_pattern", "type": "index-pattern", "id": pattern}
+                           for n in range(len(panel["controls"]))]}
+    query = spec["queries"][panel["query"]]
+    if "filter" in panel:
+        query = f"({query}) and ({panel['filter']})" if query else panel["filter"]
+    reference = [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": pattern}]
+    if panel["type"] == "search":
+        return {"type": "search", "id": object_id, "references": reference, "attributes": {
+            "title": panel["title"], "description": "", "columns": panel["columns"],
+            "sort": [["@timestamp", "desc"]], "version": 1,
+            "kibanaSavedObjectMeta": {"searchSourceJSON": search_source(query)}}}
+    return {"type": "visualization", "id": object_id, "references": reference, "attributes": {
+        "title": panel["title"], "description": "", "version": 1, "uiStateJSON": UI_STATE,
+        "visState": vis_state(panel, spec.get("layers", [])),
+        "kibanaSavedObjectMeta": {"searchSourceJSON": search_source(query)}}}
 
 
 def saved_objects(spec):
-    objects, panels, refs = [], [], []
-    x = y = row_height = 0
-    for number, panel in enumerate(spec["panels"]):
-        object_id = SAVED_OBJECT_PREFIX + panel["id"]
-        query = spec["queries"][panel["query"]]
-        if "filter" in panel:
-            query = f"({query}) and ({panel['filter']})"
-        reference = [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern",
-                      "id": INDEX_PATTERNS[panel["index"]]}]
-        if panel["type"] == "search":
-            object_type = "search"
-            attributes = {"title": panel["title"], "description": "", "columns": panel["columns"],
-                          "sort": [["@timestamp", "desc"]], "version": 1,
-                          "kibanaSavedObjectMeta": {"searchSourceJSON": search_source(query)}}
-        else:
-            object_type = "visualization"
-            attributes = {"title": panel["title"], "description": "", "version": 1, "uiStateJSON": "{}",
-                          "visState": vis_state(panel),
-                          "kibanaSavedObjectMeta": {"searchSourceJSON": search_source(query)}}
-        objects.append({"type": object_type, "id": object_id, "attributes": attributes, "references": reference})
-        width, height = panel["w"], panel["h"]
-        if x + width > 48:
-            x, y, row_height = 0, y + row_height, 0
-        panels.append({"version": "3.2.0", "gridData": {"x": x, "y": y, "w": width, "h": height, "i": str(number)},
-                       "panelIndex": str(number), "type": object_type, "panelRefName": f"panel_{number}",
-                       "embeddableConfig": {}})
-        refs.append({"name": f"panel_{number}", "type": object_type, "id": object_id})
-        x += width
-        row_height = max(row_height, height)
-    objects.append({"type": "dashboard", "id": spec["id"], "references": refs, "attributes": {
-        "title": spec["title"], "description": spec["description"], "version": 1, "timeRestore": True,
-        "timeFrom": "now-24h", "timeTo": "now", "refreshInterval": {"pause": False, "value": 60000},
-        "panelsJSON": json.dumps(panels), "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
-        "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({"query": {"query": "", "language": "kuery"}, "filter": []})},
-    }})
+    objects, seen = [], set()
+    for dashboard in spec["dashboards"]:
+        nav = {"id": dashboard["id"] + "-nav", "type": "markdown", "markdown": navigation(spec, dashboard),
+               "w": 48, "h": 4}
+        panels, refs = [], []
+        x = y = row_height = 0
+        for number, panel in enumerate([nav] + dashboard["panels"]):
+            if panel["id"] in seen:
+                raise ValueError("duplicate panel id " + panel["id"])
+            seen.add(panel["id"])
+            saved = panel_object(panel, spec)
+            objects.append(saved)
+            width, height = panel["w"], panel["h"]
+            if x + width > 48:
+                x, y, row_height = 0, y + row_height, 0
+            panels.append({"version": "3.6.0", "gridData": {"x": x, "y": y, "w": width, "h": height, "i": str(number)},
+                           "panelIndex": str(number), "type": saved["type"], "panelRefName": f"panel_{number}",
+                           "embeddableConfig": {}})
+            refs.append({"name": f"panel_{number}", "type": saved["type"], "id": saved["id"]})
+            x += width
+            row_height = max(row_height, height)
+        objects.append({"type": "dashboard", "id": dashboard["id"], "references": refs, "attributes": {
+            "title": dashboard["title"], "description": dashboard["description"], "version": 1, "timeRestore": True,
+            "timeFrom": "now-24h", "timeTo": "now", "refreshInterval": {"pause": False, "value": 60000},
+            "panelsJSON": json.dumps(panels), "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
+            "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({"query": {"query": "", "language": "kuery"}, "filter": []})},
+        }})
     return objects
 
 
-def reconcile_dashboard(api, spec):
+def reconcile_dashboards(api, spec):
     objects = saved_objects(spec)
     wanted = {(o["type"], o["id"]) for o in objects}
     api.call("POST", "/api/saved_objects/_bulk_create?overwrite=true", objects)
-    log(f"Dashboard '{spec['title']}' written with {len(objects) - 1} panels")
-    for object_type in ("visualization", "search"):
-        _, found = api.call("GET", f"/api/saved_objects/_find?type={object_type}&per_page=1000&fields=title")
+    for dashboard in spec["dashboards"]:
+        log(f"Dashboard '{dashboard['title']}' written with {len(dashboard['panels']) + 1} panels")
+    for object_type in ("visualization", "search", "dashboard"):
+        _, found = api.call("GET", f"/api/saved_objects/_find?type={object_type}&per_page=1000&fields=description")
         for item in found.get("saved_objects", []):
-            if item["id"].startswith(SAVED_OBJECT_PREFIX) and (object_type, item["id"]) not in wanted:
+            managed = (item["id"].startswith(SAVED_OBJECT_PREFIX) if object_type != "dashboard"
+                       else item.get("attributes", {}).get("description", "").endswith(MANAGED))
+            if managed and (object_type, item["id"]) not in wanted:
                 api.call("DELETE", f"/api/saved_objects/{object_type}/{item['id']}")
                 log(f"Removed {object_type} {item['id']}")
 
@@ -461,7 +530,7 @@ def reconcile_dashboard(api, spec):
 def load_packs():
     packs = []
     for name in sorted(os.listdir(CONFIG_DIR)):
-        if name.endswith(".json") and name != "dashboard.json":
+        if name.endswith(".json") and name != "dashboards.json":
             with open(os.path.join(CONFIG_DIR, name)) as f:
                 pack = json.load(f)
             if "integration" in pack:
@@ -471,8 +540,8 @@ def load_packs():
 
 def main():
     packs = load_packs()
-    with open(os.path.join(CONFIG_DIR, "dashboard.json")) as f:
-        dashboard = json.load(f)
+    with open(os.path.join(CONFIG_DIR, "dashboards.json")) as f:
+        dashboards_spec = json.load(f)
     password = admin_password()
     indexer = Api(INDEXER, password)
     dashboards = Api(DASHBOARD, password, {"osd-xsrf": "true", "securitytenant": "global"})
@@ -493,7 +562,7 @@ def main():
     promote(indexer, "test", ("remove",))
 
     wait_until("Wazuh dashboard", lambda: dashboards.call("GET", "/api/status"))
-    reconcile_dashboard(dashboards, dashboard)
+    reconcile_dashboards(dashboards, dashboards_spec)
 
 
 if __name__ == "__main__":

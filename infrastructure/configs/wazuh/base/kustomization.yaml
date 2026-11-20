@@ -21,7 +21,7 @@ configMapGenerator:
       - k8s-security/gcp-security.yaml
       - k8s-security/gke-requests.yaml
       - k8s-security/gke-network-policy.yaml
-      - k8s-security/dashboard.yaml
+      - k8s-security/dashboards.yaml
   - name: wazuh-manager-config
     files:
       - manager/wazuh-manager.conf

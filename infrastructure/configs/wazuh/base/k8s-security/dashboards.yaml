@@ -1,0 +1,644 @@
+# Dashboards written by the k8s-security setup hook. Every dashboard opens with a navigation bar to the
+# others and its intro. Panels read one index (see INDEX_PATTERNS in setup.py) with a named query, and an
+# optional filter that narrows it. Level colours are the same on every chart.
+queries:
+  all: ""
+  notable: wazuh.rule.level:(critical or high or medium)
+  urgent: wazuh.rule.level:(critical or high)
+  k8s: service.name:"k8s.io"
+  k8s-notable: service.name:"k8s.io" and wazuh.rule.level:(critical or high or medium)
+  human: service.name:"k8s.io" and not user.name:system\:* and not user.name:*@container-engine-robot.iam.gserviceaccount.com and not user.name:kubelet-nodepool-bootstrap
+  exec: service.name:"k8s.io" and event.code:(io.k8s.core.v1.pods.exec.create or io.k8s.core.v1.pods.exec.get or io.k8s.core.v1.pods.attach.create or io.k8s.core.v1.pods.attach.get or io.k8s.core.v1.pods.ephemeralcontainers.patch or io.k8s.core.v1.pods.ephemeralcontainers.update)
+  rbac: service.name:"k8s.io" and event.code:io.k8s.authorization.rbac.v1.*
+  credentials: service.name:"k8s.io" and (event.code:io.k8s.core.v1.secrets.* or event.code:io.k8s.core.v1.serviceaccounts.* or event.code:io.k8s.certificates.*)
+  falco: rule.ruleset:"falco" and not rule.name:"Falco canary"
+  network: wazuh.integration.name:"gke-network-policy"
+  gcp: service.name:*.googleapis.com
+  gcp-people: service.name:*.googleapis.com and not user.name:*.gserviceaccount.com and not user.name:*.svc.id.goog
+
+layers:
+  - label: Kubernetes API
+    query: service.name:"k8s.io"
+  - label: Google Cloud
+    query: service.name:*.googleapis.com
+  - label: Falco runtime
+    query: wazuh.integration.name:"falco"
+  - label: Network policy
+    query: wazuh.integration.name:"gke-network-policy"
+
+dashboards:
+  - id: siem-overview
+    nav: Overview
+    title: SIEM overview
+    description: Every finding of the cluster and the Google Cloud project, ranked for triage. Managed from Git.
+    intro: >-
+      Start here. A red tile means critical or high findings in the time range; they are also sent to Slack.
+      Click any value in a chart or table to filter the whole dashboard, or pick from the lists below.
+      The other dashboards hold the raw activity behind each layer.
+    panels:
+      - id: overview-controls
+        type: controls
+        index: all-findings
+        w: 48
+        h: 4
+        controls:
+          - { field: wazuh.rule.level, label: Level }
+          - { field: user.name, label: Principal }
+          - { field: orchestrator.namespace, label: Namespace }
+          - { field: wazuh.rule.title, label: Rule }
+      - id: overview-critical
+        title: Critical
+        type: metric
+        index: all-findings
+        query: all
+        filter: wazuh.rule.level:critical
+        alert: true
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: Critical findings }]
+      - id: overview-high
+        title: High
+        type: metric
+        index: all-findings
+        query: all
+        filter: wazuh.rule.level:high
+        alert: true
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: High findings }]
+      - id: overview-medium
+        title: Medium
+        type: metric
+        index: all-findings
+        query: all
+        filter: wazuh.rule.level:medium
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: Medium findings }]
+      - id: overview-rules
+        title: Rules matched
+        type: metric
+        index: all-findings
+        query: notable
+        w: 8
+        h: 6
+        metrics: [{ type: cardinality, field: wazuh.rule.title, label: Rules (medium and up) }]
+      - id: overview-principals
+        title: Principals
+        type: metric
+        index: all-findings
+        query: urgent
+        w: 8
+        h: 6
+        metrics: [{ type: cardinality, field: user.name, label: Principals with high findings }]
+      - id: overview-workloads
+        title: Objects
+        type: metric
+        index: all-findings
+        query: urgent
+        w: 8
+        h: 6
+        metrics: [{ type: cardinality, field: orchestrator.resource.name, label: Kubernetes objects with high findings }]
+      - id: overview-over-time
+        title: Findings over time by level
+        type: bar
+        index: all-findings
+        query: notable
+        w: 32
+        h: 11
+        split: { field: wazuh.rule.level, size: 5 }
+      - id: overview-by-layer
+        title: Findings by layer (medium and up)
+        type: pie
+        index: all-findings
+        query: notable
+        w: 16
+        h: 11
+        layers: true
+      - id: overview-attention
+        title: Needs attention - critical and high findings, newest first
+        type: search
+        index: all-findings
+        query: urgent
+        w: 48
+        h: 15
+        columns:
+          - wazuh.rule.level
+          - wazuh.rule.title
+          - rule.name
+          - user.name
+          - orchestrator.namespace
+          - orchestrator.resource.name
+          - event.code
+          - source.ip
+      - id: overview-top-rules
+        title: Rules matched (medium and up)
+        type: table
+        index: all-findings
+        query: notable
+        w: 24
+        h: 15
+        terms:
+          - { field: wazuh.rule.title, size: 20, label: Rule }
+          - { field: rule.name, size: 5, label: Falco rule, missing: "-" }
+          - { field: wazuh.rule.level, size: 5, label: Level }
+      - id: overview-mitre
+        title: MITRE ATT&CK techniques (medium and up)
+        type: horizontal_bar
+        index: all-findings
+        query: notable
+        w: 24
+        h: 15
+        terms:
+          - { field: wazuh.rule.mitre.technique.name, size: 12, label: Technique }
+      - id: overview-who
+        title: Who - principals behind high findings
+        type: table
+        index: all-findings
+        query: urgent
+        w: 24
+        h: 12
+        terms:
+          - { field: user.name, size: 15, label: Principal }
+          - { field: source.ip, size: 5, label: Source IP }
+          - { field: source.geo.country_name, size: 3, label: Country }
+      - id: overview-where
+        title: Where - namespaces and objects behind high findings
+        type: table
+        index: all-findings
+        query: urgent
+        w: 24
+        h: 12
+        terms:
+          - { field: orchestrator.namespace, size: 10, label: Namespace }
+          - { field: orchestrator.resource.name, size: 10, label: Object }
+
+  - id: siem-kubernetes
+    nav: Kubernetes API
+    title: Kubernetes API activity
+    description: GKE audit activity, the findings of the gke-kubernetes, gke-requests and gke-network-policy rules, and denied connections. Managed from Git.
+    intro: >-
+      Who did what to the cluster through the Kubernetes API. Automation (system principals, GKE robots)
+      is left out of the people and workloads panels. Exec sessions, RBAC and secret operations are listed
+      one by one.
+    panels:
+      - id: k8s-controls
+        type: controls
+        index: findings
+        w: 48
+        h: 4
+        controls:
+          - { field: user.name, label: Principal }
+          - { field: orchestrator.namespace, label: Namespace }
+          - { field: event.code, label: Method }
+      - id: k8s-urgent
+        title: High and critical
+        type: metric
+        index: findings
+        query: k8s
+        filter: wazuh.rule.level:(critical or high)
+        alert: true
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: High and critical findings }]
+      - id: k8s-exec-count
+        title: Exec sessions
+        type: metric
+        index: events
+        query: exec
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: Exec, attach and debug }]
+      - id: k8s-rbac-count
+        title: RBAC changes
+        type: metric
+        index: events
+        query: rbac
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: RBAC writes }]
+      - id: k8s-denied-count
+        title: Denied writes
+        type: metric
+        index: events
+        query: k8s
+        filter: event.outcome:failure
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: Denied or failed writes }]
+      - id: k8s-people-count
+        title: People and workloads
+        type: metric
+        index: events
+        query: human
+        w: 8
+        h: 6
+        metrics: [{ type: cardinality, field: user.name, label: Principals acting }]
+      - id: k8s-network-count
+        title: Denied connections
+        type: metric
+        index: network-findings
+        query: network
+        w: 8
+        h: 6
+        metrics: [{ type: count, label: Into security namespaces }]
+      - id: k8s-findings-over-time
+        title: Kubernetes findings over time by level (medium and up)
+        type: bar
+        index: findings
+        query: k8s-notable
+        w: 32
+        h: 10
+        split: { field: wazuh.rule.level, size: 5 }
+      - id: k8s-findings-by-level
+        title: Kubernetes findings by level (medium and up)
+        type: pie
+        index: findings
+        query: k8s-notable
+        w: 16
+        h: 10
+        terms:
+          - { field: wazuh.rule.level, size: 5 }
+      - id: k8s-findings-latest
+        title: Latest Kubernetes findings (medium and up)
+        type: search
+        index: findings
+        query: k8s-notable
+        w: 48
+        h: 13
+        columns:
+          - wazuh.rule.level
+          - wazuh.rule.title
+          - user.name
+          - event.code
+          - orchestrator.namespace
+          - orchestrator.resource.name
+          - source.ip
+      - id: k8s-human-by-user
+        title: People and workloads by principal
+        type: table
+        index: events
+        query: human
+        w: 24
+        h: 12
+        terms:
+          - { field: user.name, size: 20, label: Principal }
+          - { field: event.code, size: 10, label: Method }
+      - id: k8s-human-by-ip
+        title: People and workloads by source IP
+        type: table
+        index: events
+        query: human
+        w: 24
+        h: 12
+        terms:
+          - { field: source.ip, size: 20, label: Source IP }
+          - { field: user.name, size: 10, label: Principal }
+      - id: k8s-exec-sessions
+        title: Exec, attach and debug sessions
+        type: search
+        index: events
+        query: exec
+        w: 24
+        h: 12
+        columns:
+          - user.name
+          - event.code
+          - orchestrator.namespace
+          - orchestrator.resource.name
+          - source.ip
+      - id: k8s-rbac-changes
+        title: RBAC changes
+        type: search
+        index: events
+        query: rbac
+        w: 24
+        h: 12
+        columns:
+          - user.name
+          - event.code
+          - orchestrator.namespace
+          - orchestrator.resource.name
+          - event.outcome
+      - id: k8s-credential-operations
+        title: Secrets, service account and certificate operations
+        type: search
+        index: events
+        query: credentials
+        w: 48
+        h: 12
+        columns:
+          - user.name
+          - event.code
+          - orchestrator.namespace
+          - orchestrator.resource.name
+          - event.outcome
+      - id: k8s-writes-over-time
+        title: API writes over time by method
+        type: line
+        index: events
+        query: k8s
+        w: 32
+        h: 10
+        split: { field: event.code, size: 8 }
+      - id: k8s-writes-by-namespace
+        title: Writes by namespace
+        type: horizontal_bar
+        index: events
+        query: k8s
+        w: 16
+        h: 10
+        terms:
+          - { field: orchestrator.namespace, size: 10, label: Namespace }
+      - id: k8s-denied-by-principal
+        title: Denied or failed writes by principal
+        type: table
+        index: events
+        query: k8s
+        filter: event.outcome:failure
+        w: 24
+        h: 12
+        terms:
+          - { field: user.name, size: 15, label: Principal }
+          - { field: event.code, size: 10, label: Method }
+      - id: k8s-network-denied
+        title: Denied connections into security namespaces
+        type: table
+        index: network-findings
+        query: network
+        w: 24
+        h: 12
+        terms:
+          - { field: source.ip, size: 15, label: Source pod IP }
+          - { field: destination.domain, size: 5, label: Destination }
+          - { field: destination.ip, size: 5, label: Destination IP }
+
+  - id: siem-runtime
+    nav: Falco runtime
+    title: Falco runtime
+    description: What runs inside the containers, as Falco sees it on every node, and the findings of the falco rules. Managed from Git.
+    intro: >-
+      Processes, files and connections inside the containers. Each alert names the pod, the image and the
+      command line; the image list shows workloads that do not come from a trusted registry.
+    panels:
+      - id: runtime-controls
+        type: controls
+        index: security-events
+        w: 48
+        h: 4
+        controls:
+          - { field: log.level, label: Falco priority }
+          - { field: rule.name, label: Falco rule }
+          - { field: orchestrator.namespace, label: Namespace }
+          - { field: container.image.name, label: Image }
+      - id: runtime-critical
+        title: Critical
+        type: metric
+        index: security-findings
+        query: falco
+        filter: wazuh.rule.level:critical
+        alert: true
+        w: 12
+        h: 6
+        metrics: [{ type: count, label: Critical runtime findings }]
+      - id: runtime-high
+        title: High
+        type: metric
+        index: security-findings
+        query: falco
+        filter: wazuh.rule.level:high
+        alert: true
+        w: 12
+        h: 6
+        metrics: [{ type: count, label: High runtime findings }]
+      - id: runtime-workloads
+        title: Workloads
+        type: metric
+        index: security-events
+        query: falco
+        w: 12
+        h: 6
+        metrics: [{ type: cardinality, field: orchestrator.resource.name, label: Pods with Falco alerts }]
+      - id: runtime-rules
+        title: Falco rules
+        type: metric
+        index: security-events
+        query: falco
+        w: 12
+        h: 6
+        metrics: [{ type: cardinality, field: rule.name, label: Distinct rules fired }]
+      - id: runtime-over-time
+        title: Falco alerts over time by priority
+        type: bar
+        index: security-events
+        query: falco
+        w: 32
+        h: 10
+        split: { field: log.level, size: 6 }
+      - id: runtime-by-level
+        title: Runtime findings by level
+        type: pie
+        index: security-findings
+        query: falco
+        w: 16
+        h: 10
+        terms:
+          - { field: wazuh.rule.level, size: 5 }
+      - id: runtime-latest
+        title: Latest Falco alerts
+        type: search
+        index: security-events
+        query: falco
+        w: 48
+        h: 15
+        columns:
+          - log.level
+          - rule.name
+          - orchestrator.namespace
+          - orchestrator.resource.name
+          - container.image.name
+          - process.command_line
+          - file.path
+          - user.name
+      - id: runtime-top-rules
+        title: Top Falco rules
+        type: horizontal_bar
+        index: security-events
+        query: falco
+        w: 24
+        h: 12
+        terms:
+          - { field: rule.name, size: 15, label: Falco rule }
+      - id: runtime-by-workload
+        title: Alerts by workload
+        type: table
+        index: security-events
+        query: falco
+        w: 24
+        h: 12
+        terms:
+          - { field: orchestrator.namespace, size: 10, label: Namespace }
+          - { field: orchestrator.resource.name, size: 10, label: Pod }
+          - { field: container.image.name, size: 5, label: Image }
+      - id: runtime-processes
+        title: Processes behind the alerts
+        type: table
+        index: security-events
+        query: falco
+        w: 24
+        h: 12
+        terms:
+          - { field: process.name, size: 15, label: Process }
+          - { field: process.parent.name, size: 5, label: Parent }
+      - id: runtime-files
+        title: Files touched
+        type: table
+        index: security-events
+        query: falco
+        filter: file.path:*
+        w: 24
+        h: 12
+        terms:
+          - { field: file.path, size: 15, label: File }
+          - { field: rule.name, size: 5, label: Falco rule }
+
+  - id: siem-google-cloud
+    nav: Google Cloud
+    title: Google Cloud audit
+    description: Google Cloud audit activity outside Kubernetes and the findings of the gcp-security and standard gcp rules. Managed from Git.
+    intro: >-
+      Calls to Google Cloud APIs: IAM, keys, secrets, logging, networks and the cluster itself. People are
+      principals that are not service accounts; the robots of Google services are in the service lists only.
+    panels:
+      - id: gcp-controls
+        type: controls
+        index: events
+        w: 48
+        h: 4
+        controls:
+          - { field: service.name, label: Service }
+          - { field: user.name, label: Principal }
+          - { field: event.outcome, label: Outcome }
+      - id: gcp-urgent
+        title: High and critical
+        type: metric
+        index: findings
+        query: gcp
+        filter: wazuh.rule.level:(critical or high)
+        alert: true
+        w: 12
+        h: 6
+        metrics: [{ type: count, label: High and critical findings }]
+      - id: gcp-calls
+        title: API calls
+        type: metric
+        index: events
+        query: gcp
+        w: 12
+        h: 6
+        metrics: [{ type: count, label: Google Cloud API calls }]
+      - id: gcp-people-count
+        title: People
+        type: metric
+        index: events
+        query: gcp-people
+        w: 12
+        h: 6
+        metrics: [{ type: cardinality, field: user.name, label: People calling APIs }]
+      - id: gcp-denied-count
+        title: Denied
+        type: metric
+        index: events
+        query: gcp
+        filter: event.outcome:failure
+        w: 12
+        h: 6
+        metrics: [{ type: count, label: Denied or failed calls }]
+      - id: gcp-findings-over-time
+        title: Google Cloud findings over time by level
+        type: bar
+        index: findings
+        query: gcp
+        w: 32
+        h: 10
+        split: { field: wazuh.rule.level, size: 5 }
+      - id: gcp-findings-by-level
+        title: Google Cloud findings by level
+        type: pie
+        index: findings
+        query: gcp
+        w: 16
+        h: 10
+        terms:
+          - { field: wazuh.rule.level, size: 5 }
+      - id: gcp-findings-latest
+        title: Latest Google Cloud findings
+        type: search
+        index: findings
+        query: gcp
+        w: 48
+        h: 13
+        columns:
+          - wazuh.rule.level
+          - wazuh.rule.title
+          - user.name
+          - service.name
+          - event.code
+          - source.ip
+          - event.outcome
+      - id: gcp-by-service
+        title: API calls by service
+        type: horizontal_bar
+        index: events
+        query: gcp
+        w: 24
+        h: 12
+        terms:
+          - { field: service.name, size: 12, label: Service }
+      - id: gcp-people-table
+        title: People by method
+        type: table
+        index: events
+        query: gcp-people
+        w: 24
+        h: 12
+        terms:
+          - { field: user.name, size: 10, label: Principal }
+          - { field: event.code, size: 10, label: Method }
+      - id: gcp-denied-table
+        title: Denied or failed calls
+        type: table
+        index: events
+        query: gcp
+        filter: event.outcome:failure
+        w: 24
+        h: 12
+        terms:
+          - { field: user.name, size: 10, label: Principal }
+          - { field: event.code, size: 10, label: Method }
+      - id: gcp-origin
+        title: Where people call from
+        type: table
+        index: events
+        query: gcp-people
+        w: 24
+        h: 12
+        terms:
+          - { field: source.geo.country_name, size: 5, label: Country }
+          - { field: source.as.organization.name, size: 5, label: Network }
+          - { field: source.ip, size: 5, label: Source IP }
+      - id: gcp-people-latest
+        title: Latest calls by people
+        type: search
+        index: events
+        query: gcp-people
+        w: 48
+        h: 13
+        columns:
+          - user.name
+          - service.name
+          - event.code
+          - event.outcome
+          - source.ip
+          - source.geo.country_name
+          - user_agent.original

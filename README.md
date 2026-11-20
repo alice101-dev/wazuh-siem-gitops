@@ -17,7 +17,7 @@ service account key exists anywhere: Google Cloud access goes through **GKE Work
   reverse shells, privileged or host-mounted containers, untrusted images). Every technique is listed with
   how to reproduce it under [Detection coverage](#detection-coverage).
 - **Fully GitOps.** Wazuh configuration, PKI, generated passwords, agent enrollment, ruleset activation,
-  custom decoders, rules and detectors, the Slack channel, alert monitors and the security dashboard are all
+  custom decoders, rules and detectors, the Slack channel, alert monitors and the security dashboards are all
   reconciled from Git; nothing is clicked in the dashboard.
 - **Scale-out.** Dedicated indexer cluster-manager and data nodes, a manager master with workers, and node
   certificates with wildcard SANs, so adding replicas needs no new certificate.
@@ -225,9 +225,16 @@ a bucket-level monitor: every pod gets its own alert and one Slack message when 
 another pod's scan already alerting does not hold it back. The alerting plugin does not hand the bucket
 counts to the message, so the message names the pod and the window, and the counts are in the index.
 
-The same hook writes the **GKE Kubernetes security** dashboard: findings by level, rule and time, the
-actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service
-account and certificate operations, and write trends by method and namespace.
+The same hook writes four linked dashboards from
+[`dashboards.yaml`](infrastructure/configs/wazuh/base/k8s-security/dashboards.yaml), each with a
+navigation bar, filter lists and the same colour per level:
+
+| Dashboard | Shows |
+|---|---|
+| **SIEM overview** | start page: critical, high and medium counts (red tiles when above zero), findings over time and by layer, a newest-first list of critical and high findings, rules, MITRE techniques, and who and where |
+| **Kubernetes API activity** | findings of the Kubernetes rules, actions of people and workloads by principal and source IP, exec sessions, RBAC changes, secret, service account and certificate operations, writes by method and namespace, denied writes and denied connections |
+| **Falco runtime** | runtime findings, alerts by priority, rule, workload and image, the processes and files behind them |
+| **Google Cloud audit** | findings of the Google Cloud rules, API calls by service, people by method and origin, denied calls |
 
 ## Runtime security (Falco)
 
