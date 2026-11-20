@@ -27,6 +27,19 @@ service account key exists anywhere: Google Cloud access goes through **GKE Work
 
 ![Slack alerts: a Deployment created outside GitOps, exec into a pod, the Falco DaemonSet deleted, and a reverse shell from a dropped binary](docs/screenshots/slack-gke-gitops-and-falco-critical.png)
 
+<details>
+<summary>More Slack alerts</summary>
+
+![Cloud audit logging disabled: a Cloud Logging sink deleted with gcloud](docs/screenshots/slack-gcp-log-sink-deleted.png)
+
+![A ClusterRole that allows privilege escalation, a Role with wildcard permissions, a Secret deleted outside GitOps, and the indexer admin TLS Secret read](docs/screenshots/slack-gke-rbac-and-secrets.png)
+
+![A container reading /etc/shadow, with the full Falco output](docs/screenshots/slack-falco-read-sensitive-file.png)
+
+![A container requesting a Google access token from the metadata server, and an untrusted image started](docs/screenshots/slack-falco-metadata-server.png)
+
+</details>
+
 ## Topology
 
 ```mermaid
@@ -130,19 +143,6 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Permission enumeration | Google Cloud or Kubernetes denies one caller on 4 or more API methods in 5 minutes; one message per caller | bright red |
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
-
-<details>
-<summary>More Slack alerts</summary>
-
-![Cloud audit logging disabled: a Cloud Logging sink deleted with gcloud](docs/screenshots/slack-gcp-log-sink-deleted.png)
-
-![A ClusterRole that allows privilege escalation, a Role with wildcard permissions, a Secret deleted outside GitOps, and the indexer admin TLS Secret read](docs/screenshots/slack-gke-rbac-and-secrets.png)
-
-![A container reading /etc/shadow, with the full Falco output](docs/screenshots/slack-falco-read-sensitive-file.png)
-
-![A container requesting a Google access token from the metadata server, and an untrusted image started](docs/screenshots/slack-falco-metadata-server.png)
-
-</details>
 
 ## Kubernetes security
 
