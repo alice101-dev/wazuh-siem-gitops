@@ -1,0 +1,258 @@
+integration:
+  title: gke-requests
+  category: security
+  description: 'Request bodies of GKE audit entries for workload and RBAC writes and impersonated calls: privileged pods, host namespaces, host paths and ports, dangerous capabilities, admin bindings, escalating roles and impersonation.'
+detector:
+  name: gke-requests
+  indices:
+    - wazuh-events-v5-security
+  interval_minutes: 1
+decoders:
+  - name: decoder/gke-requests/0
+    title: GKE workload and role binding request
+    parents:
+      - decoder/custom-wazuh-message/0
+    description: 'Reads the request body of a GKE audit entry for a workload or RBAC write, or an impersonated call, and tags what makes it dangerous. Only the request is read: the response holds the whole object, also for a patch that changed nothing dangerous.'
+    check: $_tmp_json.integration == 'gcp' AND $_tmp_json.gcp.protoPayload.serviceName == 'k8s.io'
+    normalize:
+      - map:
+          - _gke: rename($_tmp_json.gcp)
+          - _tmp: delete()
+          - event.kind: event
+          - event.module: gke
+          - event.outcome: success
+          - event.code: $_gke.protoPayload.methodName
+          - user.name: $_gke.protoPayload.authenticationInfo.principalEmail
+          - source.ip: $_gke.protoPayload.requestMetadata.callerIp
+          - user_agent.original: $_gke.protoPayload.requestMetadata.callerSuppliedUserAgent
+          - cloud.project.id: $_gke.resource.labels.project_id
+          - orchestrator.type: kubernetes
+          - orchestrator.cluster.name: $_gke.resource.labels.cluster_name
+          - orchestrator.namespace: $_gke.protoPayload.request.metadata.namespace
+          - orchestrator.resource.name: $_gke.protoPayload.request.metadata.name
+          - orchestrator.resource.type: $_gke.protoPayload.request.kind
+          - message: $_gke.protoPayload.resourceName
+          - user.target.name: $_gke.protoPayload.authenticationInfo.authoritySelector
+      - check: exists($_gke.protoPayload.status.code)
+        map:
+          - event.outcome: failure
+      - check: 'regex_match($event.original, ''"request": [{].*"privileged": true.*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(privileged)
+      - check: 'regex_match($event.original, ''"request": [{].*"hostNetwork": true.*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(host_network)
+      - check: 'regex_match($event.original, ''"request": [{].*"hostPID": true.*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(host_pid)
+      - check: 'regex_match($event.original, ''"request": [{].*"hostIPC": true.*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(host_ipc)
+      - check: 'regex_match($event.original, ''"request": [{].*"hostPath": [{].*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(host_path)
+      - check: 'regex_match($event.original, ''"request": [{].*"add": [[]("[A-Z_]+", )*"(CAP_)?SYS_ADMIN".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(cap_sys_admin)
+      - check: 'regex_match($event.original, ''"request": [{].*"add": [[]("[A-Z_]+", )*"(CAP_)?(NET_ADMIN|NET_RAW|SYS_PTRACE|SYS_MODULE|DAC_READ_SEARCH|SYS_RAWIO|BPF|PERFMON|ALL)".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(cap_dangerous)
+      - check: 'regex_match($event.original, ''"request": [{].*"hostPort": [0-9].*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(host_port)
+      - check: 'regex_match($event.original, ''"request": [{].*"nodeName": ".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(node_name)
+      - check: 'regex_match($event.original, ''"request": [{].*"shareProcessNamespace": true.*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(share_pid)
+      - check: 'regex_match($event.original, ''"request": [{].*"roleRef": [{][^}]*"name": "(cluster-admin|admin|edit)".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(admin_role_binding)
+      - check: 'regex_match($event.original, ''"request": [{].*"(verbs|resources|apiGroups)": [[]("[a-zA-Z0-9*/.-]*", )*"[*]".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(rbac_wildcard)
+      - check: 'regex_match($event.original, ''"request": [{].*"verbs": [[]("[a-z*]+", )*"(escalate|bind|impersonate)".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(rbac_escalate)
+      - check: 'regex_match($event.original, ''"request": [{].*"resources": [[]("[a-z*/.-]+", )*"(secrets|pods/exec|pods/attach|pods/ephemeralcontainers|nodes/proxy|serviceaccounts/token|certificatesigningrequests/approval|mutatingwebhookconfigurations|validatingwebhookconfigurations)".*"requestMetadata": [{]'')'
+        map:
+          - tags: array_append(rbac_sensitive)
+      - check: exists($_gke.protoPayload.authenticationInfo.authoritySelector)
+        map:
+          - tags: array_append(impersonation)
+trusted:
+  trusted_prefix:
+    user.name|startswith:
+      - 'system:node:'
+      - system:kube-
+      - system:apiserver
+      - system:gke-
+      - system:gcp-
+      - system:anet-
+      - system:pdcsi-
+      - system:kubestore-collector
+      - system:cloud-controller-manager
+      - system:cluster-autoscaler
+      - 'system:serviceaccount:kube-system:'
+      - system:serviceaccount:gke-
+      - 'system:serviceaccount:argocd:'
+      - 'system:serviceaccount:cert-manager:'
+      - 'system:serviceaccount:external-secrets:'
+      - system:addon-manager
+  trusted_robot:
+    user.name|endswith: '@container-engine-robot.iam.gserviceaccount.com'
+  trusted_exact:
+    user.name:
+      - kubelet-nodepool-bootstrap
+      - system:serviceaccount:wazuh:wazuh-enrollment
+rules:
+  - title: GKE privileged workload requested
+    level: critical
+    description: A pod or workload with a privileged container was requested outside GitOps; a privileged container owns the node.
+    selection:
+      event.code|startswith: io.k8s.
+      tags: privileged
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1611
+        - Escape to Host
+  - title: GKE workload with host namespaces requested
+    level: critical
+    description: A pod or workload in the host network, PID or IPC namespace was requested outside GitOps.
+    selection:
+      event.code|startswith: io.k8s.
+      tags:
+        - host_network
+        - host_pid
+        - host_ipc
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1611
+        - Escape to Host
+  - title: GKE workload with a hostPath volume requested
+    level: high
+    description: A pod or workload that mounts a path of the node was requested outside GitOps.
+    selection:
+      event.code|startswith: io.k8s.
+      tags: host_path
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1611
+        - Escape to Host
+  - title: GKE workload with CAP_SYS_ADMIN requested
+    level: critical
+    description: A container with the SYS_ADMIN capability was requested outside GitOps, nearly as strong as privileged.
+    selection:
+      event.code|startswith: io.k8s.
+      tags: cap_sys_admin
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1611
+        - Escape to Host
+  - title: GKE binding to an admin role
+    level: critical
+    description: A RoleBinding or ClusterRoleBinding to cluster-admin, admin or edit was created or changed outside GitOps.
+    selection:
+      event.code|startswith: io.k8s.authorization.rbac.
+      tags: admin_role_binding
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GKE workload with a dangerous capability requested
+    level: high
+    description: 'A container with NET_ADMIN, NET_RAW, SYS_PTRACE, SYS_MODULE, DAC_READ_SEARCH, SYS_RAWIO, BPF, PERFMON or ALL capabilities was requested outside GitOps: sniffing, spoofing, reading other processes or loading kernel code.'
+    selection:
+      event.code|startswith: io.k8s.
+      tags: cap_dangerous
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1611
+        - Escape to Host
+  - title: GKE workload pinned to a node or sharing host ports or processes
+    level: high
+    description: A pod or workload set nodeName (skipping the scheduler, as kubectl debug node does), a hostPort, or a shared process namespace, outside GitOps.
+    selection:
+      event.code|startswith: io.k8s.
+      tags:
+        - node_name
+        - host_port
+        - share_pid
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1611
+        - Escape to Host
+  - title: GKE RBAC role with wildcard permissions
+    level: critical
+    description: A Role or ClusterRole with * in its verbs, resources or API groups was created or changed outside GitOps.
+    selection:
+      event.code|startswith: io.k8s.authorization.rbac.
+      tags: rbac_wildcard
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GKE RBAC role allows privilege escalation
+    level: critical
+    description: 'A Role or ClusterRole granting escalate, bind or impersonate was created or changed outside GitOps: whoever holds it can give themselves any permission.'
+    selection:
+      event.code|startswith: io.k8s.authorization.rbac.
+      tags: rbac_escalate
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GKE RBAC role grants sensitive access
+    level: high
+    description: A Role or ClusterRole granting secrets, pods/exec or attach, ephemeral containers, nodes/proxy, service account tokens, CSR approval or admission webhooks was created or changed outside GitOps.
+    selection:
+      event.code|startswith: io.k8s.authorization.rbac.
+      tags: rbac_sensitive
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GKE impersonation used
+    level: high
+    description: 'A Kubernetes API call was made with impersonation (kubectl --as): the caller acted as another user or service account, shown as user.target.name.'
+    selection:
+      event.code|startswith: io.k8s.
+      tags: impersonation
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1134
+        - Access Token Manipulation

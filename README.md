@@ -130,6 +130,10 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 | Kubernetes detections and dashboard | Sync hook reconciles the rules, detector and dashboard in [`k8s-security/`](infrastructure/configs/wazuh/base/k8s-security) |
 | Network | default-deny NetworkPolicies per component, including NodeLocal DNSCache |
 
+The monitors, detections and dashboard are YAML in Git. Each hook converts them with a `yq` init container
+to the JSON that the indexer and dashboard APIs take, so the hooks need no extra packages and no network
+beyond Wazuh.
+
 ## Alerts
 
 | Monitor | Fires when | Slack color |
@@ -156,12 +160,12 @@ system, both out of the `_Default` bucket, so the controllers' reads are not bil
 Google Cloud logs a denied read only in the Data Access log, so `ADMIN_READ` is on for every service, and a
 second exclusion drops the successful reads of the services that are not audited for their own sake
 (reading an API key string is one that is kept). The
-monitor [`permission-enumeration-monitor.json`](infrastructure/configs/wazuh/base/alerting/permission-enumeration-monitor.json)
+monitor [`permission-enumeration-monitor.yaml`](infrastructure/configs/wazuh/base/alerting/permission-enumeration-monitor.yaml)
 groups the denied requests of the last 5 minutes by principal, or by source IP when the denial carries no
 identity, and alerts when one caller was denied on 4 or more API methods, one alert and one Slack message
 per caller, like the port scan monitor.
 
-[`k8s-security/gke-kubernetes.json`](infrastructure/configs/wazuh/base/k8s-security/gke-kubernetes.json) holds Sigma rules on
+[`k8s-security/gke-kubernetes.yaml`](infrastructure/configs/wazuh/base/k8s-security/gke-kubernetes.yaml) holds Sigma rules on
 those events. A Sync hook writes them to a user-managed `gke-kubernetes` integration of the content manager,
 promotes them draft → test → custom and points a Ruleset Management detector of the same name at
 `wazuh-events-v5-cloud-services`; a rule removed from the file is deleted. Every rule except the anonymous
@@ -200,7 +204,7 @@ External Secrets and the enrollment hook, so what reaches Slack is a person or a
 
 The request body of an audit entry stays in the unindexed `event.original`. For workload and RBAC writes
 and for impersonated calls, the root decoder of the custom space also lets the entry through to the
-`gke-requests` decoder ([`gke-requests.json`](infrastructure/configs/wazuh/base/k8s-security/gke-requests.json)),
+`gke-requests` decoder ([`gke-requests.yaml`](infrastructure/configs/wazuh/base/k8s-security/gke-requests.yaml)),
 which reads only the request part of the body (the response holds the whole object, also for a patch that
 changed nothing dangerous) and tags it into `wazuh-events-v5-security`: privileged containers, host
 namespaces, `hostPath`, `hostPort`, `nodeName`, shared process namespaces, `SYS_ADMIN` and other dangerous
@@ -212,10 +216,10 @@ endpoint only the node subnet.
 GKE Dataplane V2 logs every connection a NetworkPolicy denies
 ([`network-logging.yaml`](infrastructure/configs/namespaces/base/network-logging.yaml)); allowed
 connections are not logged. The `policy-action` log goes through the same sinks, and the `gke-network-policy`
-decoder ([`gke-network-policy.json`](infrastructure/configs/wazuh/base/k8s-security/gke-network-policy.json))
+decoder ([`gke-network-policy.yaml`](infrastructure/configs/wazuh/base/k8s-security/gke-network-policy.yaml))
 writes the source pod, the destination pod, IP and port into `wazuh-events-v5-network-activity`. A medium
 rule marks a denied connection from another namespace into a security namespace, and the monitor
-[`port-scan-monitor.json`](infrastructure/configs/wazuh/base/alerting/port-scan-monitor.json) groups the
+[`port-scan-monitor.yaml`](infrastructure/configs/wazuh/base/alerting/port-scan-monitor.yaml) groups the
 denials of the last 5 minutes by source pod and alerts when one pod reached 10 or more ports or hosts. It is
 a bucket-level monitor: every pod gets its own alert and one Slack message when its scan starts, while
 another pod's scan already alerting does not hold it back. The alerting plugin does not hand the bucket
@@ -238,7 +242,7 @@ with Workload Identity (`roles/pubsub.publisher` on the topic for `falco/falco-f
 the GCP collector brings them to Wazuh with the rest. Falco adds `wazuh_*` fields to each alert (namespace,
 pod, container, image, process, command line, user, file), so no node runs a Wazuh agent.
 
-[`k8s-security/falco.json`](infrastructure/configs/wazuh/base/k8s-security/falco.json) is the second
+[`k8s-security/falco.yaml`](infrastructure/configs/wazuh/base/k8s-security/falco.yaml) is the second
 content pack of the same Sync hook. Its root decoder becomes the root of the custom space policy and lets
 through only the messages that carry `wazuh_integration: falco`; the `falco` decoder maps them to the
 Wazuh Common Schema (`rule.name`, `log.level`, `process.*`, `container.*`, `orchestrator.*`, `file.path`)

@@ -1,0 +1,93 @@
+integration:
+  title: falco
+  category: security
+  description: Falco runtime security alerts from the GKE nodes, published by Falcosidekick to Pub/Sub and pulled by the GCP collector.
+detector:
+  name: falco
+  indices:
+    - wazuh-events-v5-security
+  interval_minutes: 1
+root_decoder: decoder/custom-wazuh-message/0
+decoders:
+  - name: decoder/custom-wazuh-message/0
+    title: Custom space root decoder
+    description: Parses the JSON body of the events meant for the custom space (Falco alerts, the GKE audit entries of workload and RBAC writes and of impersonated calls, and GKE network policy logs) and lets every other event go.
+    check: '(contains($event.original, ''wazuh_integration'') AND contains($event.original, ''falco'')) OR (contains($event.original, ''"serviceName": "k8s.io"'') AND (contains($event.original, ''"authoritySelector"'') OR regex_match($event.original, ''"methodName": "io[.]k8s[.](core[.]v1[.]pods|apps[.]v1[.](deployments|daemonsets|statefulsets|replicasets)|batch[.]v1[.](jobs|cronjobs)|authorization[.]rbac[.]v1[.](roles|clusterroles|rolebindings|clusterrolebindings))[.](create|update|patch)"''))) OR (contains($event.original, ''/logs/policy-action"'') AND contains($event.original, ''"disposition"''))'
+    normalize:
+      - map:
+          - _tmp_json: parse_json($event.original)
+  - name: decoder/falco/0
+    title: Falco alert
+    description: Falco alerts published by Falcosidekick to Pub/Sub and pulled by the GCP collector, with the wazuh_* extra output fields.
+    parents:
+      - decoder/custom-wazuh-message/0
+    check: $_tmp_json.integration == 'gcp' AND $_tmp_json.gcp.output_fields.wazuh_integration == 'falco' AND exists($_tmp_json.gcp.rule) AND exists($_tmp_json.gcp.priority)
+    normalize:
+      - map:
+          - _falco: rename($_tmp_json.gcp)
+          - _tmp: delete()
+          - event.kind: alert
+          - event.category: array_append(intrusion_detection)
+          - event.module: falco
+          - event.provider: $_falco.source
+          - event.start: parse_date($_falco.time, %FT%T%z)
+          - event.action: $_falco.output_fields.wazuh_evt_type
+          - rule.name: $_falco.rule
+          - rule.ruleset: falco
+          - log.level: $_falco.priority
+          - message: $_falco.output
+          - tags: $_falco.tags
+          - host.hostname: $_falco.hostname
+          - process.name: $_falco.output_fields.wazuh_proc_name
+          - process.command_line: $_falco.output_fields.wazuh_proc_cmdline
+          - process.executable: $_falco.output_fields.wazuh_proc_exepath
+          - process.pid: $_falco.output_fields.wazuh_proc_pid
+          - process.parent.name: $_falco.output_fields.wazuh_proc_pname
+          - container.id: $_falco.output_fields.wazuh_container_id
+          - container.name: $_falco.output_fields.wazuh_container_name
+          - container.image.name: $_falco.output_fields.wazuh_container_image
+          - orchestrator.type: kubernetes
+          - orchestrator.namespace: $_falco.output_fields.wazuh_k8s_ns
+          - orchestrator.resource.type: pod
+          - orchestrator.resource.name: $_falco.output_fields.wazuh_k8s_pod
+          - user.id: $_falco.output_fields.wazuh_user_uid
+      - check: exists($_falco.output_fields.wazuh_user_name) AND string_not_equal($_falco.output_fields.wazuh_user_name, "<NA>")
+        map:
+          - user.name: $_falco.output_fields.wazuh_user_name
+      - check: exists($_falco.output_fields.wazuh_fd_name) AND string_not_equal($_falco.output_fields.wazuh_fd_name, "<NA>")
+        map:
+          - file.path: $_falco.output_fields.wazuh_fd_name
+rules:
+  - title: 'Falco runtime threat: Critical'
+    description: Falco raised an alert of priority Critical, Alert or Emergency on a node or container, for example a new binary dropped and run in a container.
+    level: critical
+    trusted: false
+    selection:
+      log.level:
+        - Emergency
+        - Alert
+        - Critical
+  - title: 'Falco runtime threat: Error'
+    description: Falco raised an alert of priority Error on a node or container.
+    level: high
+    trusted: false
+    selection:
+      log.level:
+        - Error
+  - title: 'Falco runtime threat: Warning'
+    description: Falco raised an alert of priority Warning on a node or container, for example a sensitive file read, netcat remote code execution or a privileged container started.
+    level: high
+    trusted: false
+    selection:
+      log.level:
+        - Warning
+  - title: 'Falco runtime threat: Notice'
+    description: Falco raised an alert of priority Notice, for example a terminal shell in a container; the matching kubectl exec already alerts through the GKE rules.
+    level: medium
+    trusted: false
+    selection:
+      log.level:
+        - Notice
+    exclude:
+      canary:
+        rule.name: Falco canary

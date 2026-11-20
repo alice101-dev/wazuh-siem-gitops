@@ -1,0 +1,36 @@
+type: monitor
+monitor_type: cluster_metrics_monitor
+name: Wazuh indexer health
+enabled: true
+schedule:
+  period:
+    interval: 5
+    unit: MINUTES
+inputs:
+  - uri:
+      api_type: CLUSTER_HEALTH
+      path: _cluster/health
+      path_params: ""
+      url: http://localhost:9200/_cluster/health
+      clusters: []
+triggers:
+  - query_level_trigger:
+      name: Indexer cluster is not green
+      severity: "1"
+      condition:
+        script:
+          source: ctx.results[0].status != "green"
+          lang: painless
+      actions:
+        - name: Slack
+          destination_id: wazuh-slack
+          subject_template:
+            source: Wazuh indexer health
+            lang: mustache
+          message_template:
+            source: '{"attachments": [{"color": "#FF9800", "mrkdwn_in": ["text"], "text": ":warning: *Wazuh indexer cluster is {{ctx.results.0.status}}*\nNodes: {{ctx.results.0.number_of_nodes}} | Unassigned shards: {{ctx.results.0.unassigned_shards}} | Initializing: {{ctx.results.0.initializing_shards}}\nChecked: {{ctx.periodEnd}}"}]}'
+            lang: mustache
+          throttle_enabled: true
+          throttle:
+            value: 60
+            unit: MINUTES

@@ -162,6 +162,7 @@ customRules:
         - docker.io/wazuh/wazuh-dashboard
         - docker.io/curlimages/curl
         - docker.io/library/python
+        - docker.io/mikefarah/yq
         - docker.io/falcosecurity/falco
         - docker.io/falcosecurity/falcoctl
         - docker.io/falcosecurity/falcosidekick

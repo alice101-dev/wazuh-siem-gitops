@@ -1,0 +1,74 @@
+type: monitor
+monitor_type: doc_level_monitor
+name: Wazuh findings to Slack
+enabled: true
+schedule:
+  period:
+    interval: 1
+    unit: MINUTES
+inputs:
+  - doc_level_input:
+      description: Findings of level high or critical in every category
+      indices:
+        - wazuh-findings-v5-access-management
+        - wazuh-findings-v5-applications
+        - wazuh-findings-v5-cloud-services
+        - wazuh-findings-v5-network-activity
+        - wazuh-findings-v5-other
+        - wazuh-findings-v5-security
+        - wazuh-findings-v5-system-activity
+        - wazuh-findings-v5-unclassified
+      queries:
+        - id: high
+          name: high
+          query: wazuh.rule.level:"high"
+          tags: []
+        - id: critical
+          name: critical
+          query: wazuh.rule.level:"critical"
+          tags: []
+triggers:
+  - document_level_trigger:
+      name: Finding of level high
+      severity: "2"
+      condition:
+        script:
+          source: query[name=high]
+          lang: painless
+      actions:
+        - name: Slack high
+          destination_id: wazuh-slack
+          subject_template:
+            source: Wazuh finding
+            lang: mustache
+          message_template:
+            source: '{"attachments": [{"color": "#C62828", "mrkdwn_in": ["text"], "text": "{{#ctx.alerts}}{{#sample_documents}}{{#_source.rule.name}}:red_circle: *{{_source.rule.name}}*{{/_source.rule.name}}{{^_source.rule.name}}:red_circle: *{{_source.wazuh.rule.title}}*{{/_source.rule.name}}\nLevel: *high* | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}{{#_source.event.code}}\nAction: `{{_source.event.code}}`{{#_source.user.name}} by `{{_source.user.name}}`{{/_source.user.name}}{{^_source.user.name}} by an identity the audit log did not record{{/_source.user.name}}{{/_source.event.code}}{{#_source.error.message}}\nDenied: {{_source.error.message}}{{/_source.error.message}}{{#_source.cloud.project.id}}\nProject: `{{_source.cloud.project.id}}` | Source IP: `{{_source.source.ip}}`{{/_source.cloud.project.id}}{{#_source.rule.name}}\nDetected by: {{_source.wazuh.rule.title}}{{#_source.host.hostname}} on node `{{_source.host.hostname}}`{{/_source.host.hostname}}{{#_source.process.command_line}}\nProcess: `{{_source.process.command_line}}`{{#_source.user.name}} by `{{_source.user.name}}`{{/_source.user.name}}{{^_source.user.name}}{{#_source.user.id}} by uid `{{_source.user.id}}`{{/_source.user.id}}{{/_source.user.name}}{{/_source.process.command_line}}{{#_source.container.image.name}}\nContainer: `{{_source.container.name}}` image `{{_source.container.image.name}}`{{/_source.container.image.name}}{{#_source.message}}\nOutput: {{_source.message}}{{/_source.message}}{{/_source.rule.name}}{{#_source.orchestrator.namespace}}\nKubernetes:{{#_source.orchestrator.cluster.name}} cluster `{{_source.orchestrator.cluster.name}}` |{{/_source.orchestrator.cluster.name}} namespace `{{_source.orchestrator.namespace}}`{{#_source.orchestrator.resource.name}} | resource `{{_source.orchestrator.resource.type}}/{{_source.orchestrator.resource.name}}`{{/_source.orchestrator.resource.name}}{{/_source.orchestrator.namespace}}{{#_source.user_agent.original}}\nClient: `{{_source.user_agent.original}}`{{/_source.user_agent.original}}{{#_source.wazuh.rule.mitre.technique.id.0}}\nMITRE: {{_source.wazuh.rule.mitre.technique.id.0}} {{_source.wazuh.rule.mitre.technique.name.0}}{{/_source.wazuh.rule.mitre.technique.id.0}}\nTime: {{_source.@timestamp}}{{^ctx.alerts}}{{_source.wazuh.rule.mitre.technique.id}}{{_source.wazuh.rule.mitre.technique.name}}{{/ctx.alerts}}{{/sample_documents}}{{/ctx.alerts}}"}]}'
+            lang: mustache
+          throttle_enabled: false
+          action_execution_policy:
+            action_execution_scope:
+              per_alert:
+                actionable_alerts:
+                  - NEW
+  - document_level_trigger:
+      name: Finding of level critical
+      severity: "1"
+      condition:
+        script:
+          source: query[name=critical]
+          lang: painless
+      actions:
+        - name: Slack critical
+          destination_id: wazuh-slack
+          subject_template:
+            source: Wazuh finding
+            lang: mustache
+          message_template:
+            source: '{"attachments": [{"color": "#FF1744", "mrkdwn_in": ["text"], "text": "{{#ctx.alerts}}{{#sample_documents}}{{#_source.rule.name}}:rotating_light: *{{_source.rule.name}}*{{/_source.rule.name}}{{^_source.rule.name}}:rotating_light: *{{_source.wazuh.rule.title}}*{{/_source.rule.name}}\nLevel: *critical* | Category: {{_source.wazuh.integration.category}} | Integration: {{_source.wazuh.integration.name}}{{#_source.event.code}}\nAction: `{{_source.event.code}}`{{#_source.user.name}} by `{{_source.user.name}}`{{/_source.user.name}}{{^_source.user.name}} by an identity the audit log did not record{{/_source.user.name}}{{/_source.event.code}}{{#_source.error.message}}\nDenied: {{_source.error.message}}{{/_source.error.message}}{{#_source.cloud.project.id}}\nProject: `{{_source.cloud.project.id}}` | Source IP: `{{_source.source.ip}}`{{/_source.cloud.project.id}}{{#_source.rule.name}}\nDetected by: {{_source.wazuh.rule.title}}{{#_source.host.hostname}} on node `{{_source.host.hostname}}`{{/_source.host.hostname}}{{#_source.process.command_line}}\nProcess: `{{_source.process.command_line}}`{{#_source.user.name}} by `{{_source.user.name}}`{{/_source.user.name}}{{^_source.user.name}}{{#_source.user.id}} by uid `{{_source.user.id}}`{{/_source.user.id}}{{/_source.user.name}}{{/_source.process.command_line}}{{#_source.container.image.name}}\nContainer: `{{_source.container.name}}` image `{{_source.container.image.name}}`{{/_source.container.image.name}}{{#_source.message}}\nOutput: {{_source.message}}{{/_source.message}}{{/_source.rule.name}}{{#_source.orchestrator.namespace}}\nKubernetes:{{#_source.orchestrator.cluster.name}} cluster `{{_source.orchestrator.cluster.name}}` |{{/_source.orchestrator.cluster.name}} namespace `{{_source.orchestrator.namespace}}`{{#_source.orchestrator.resource.name}} | resource `{{_source.orchestrator.resource.type}}/{{_source.orchestrator.resource.name}}`{{/_source.orchestrator.resource.name}}{{/_source.orchestrator.namespace}}{{#_source.user_agent.original}}\nClient: `{{_source.user_agent.original}}`{{/_source.user_agent.original}}{{#_source.wazuh.rule.mitre.technique.id.0}}\nMITRE: {{_source.wazuh.rule.mitre.technique.id.0}} {{_source.wazuh.rule.mitre.technique.name.0}}{{/_source.wazuh.rule.mitre.technique.id.0}}\nTime: {{_source.@timestamp}}{{^ctx.alerts}}{{_source.wazuh.rule.mitre.technique.id}}{{_source.wazuh.rule.mitre.technique.name}}{{/ctx.alerts}}{{/sample_documents}}{{/ctx.alerts}}"}]}'
+            lang: mustache
+          throttle_enabled: false
+          action_execution_policy:
+            action_execution_scope:
+              per_alert:
+                actionable_alerts:
+                  - NEW

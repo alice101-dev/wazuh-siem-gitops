@@ -46,6 +46,32 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 1Mi
+        - name: monitor-json
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+      initContainers:
+        - name: yaml-to-json
+          image: mikefarah/yq:4.54.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              for file in /monitor/*.yaml; do
+                yq -p yaml -o json "$file" > "/monitor-json/$(basename "$file" .yaml).json"
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: monitor, mountPath: /monitor, readOnly: true }
+            - { name: monitor-json, mountPath: /monitor-json }
       containers:
         - name: configure-alerting
           image: curlimages/curl:8.23.0
@@ -78,7 +104,7 @@ spec:
               printf '{"config":{"name":"Slack Channel","description":"Default Slack notification channel.","config_type":"slack","is_enabled":false,"slack":{"url":"https://hooks.slack.com/services/YOUR_WORKSPACE_ID/YOUR_CHANNEL_ID/YOUR_WEBHOOK_TOKEN"}}}' |
                 api -o /dev/null -X PUT --data-binary @- "$indexer/_plugins/_notifications/configs/default_slack_channel"
               echo "Default Slack channel reset to its placeholder and disabled"
-              for file in /monitor/*.json; do
+              for file in /monitor-json/*.json; do
                 name=$(sed -n 's/^  "name": "\(.*\)",$/\1/p' "$file" | head -1)
                 found=$(api -X POST -d "{\"query\":{\"term\":{\"monitor.name.keyword\":\"$name\"}}}" \
                   "$indexer/_plugins/_alerting/monitors/_search?filter_path=hits.hits._id")
@@ -106,6 +132,6 @@ spec:
           volumeMounts:
             - { name: credentials, mountPath: /credentials, readOnly: true }
             - { name: ca, mountPath: /ca, readOnly: true }
-            - { name: monitor, mountPath: /monitor, readOnly: true }
+            - { name: monitor-json, mountPath: /monitor-json, readOnly: true }
             - { name: slack, mountPath: /slack, readOnly: true }
             - { name: tmp, mountPath: /tmp }

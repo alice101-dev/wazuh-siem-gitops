@@ -1,0 +1,265 @@
+id: gke-kubernetes-security
+title: GKE Kubernetes security
+description: Kubernetes audit activity of the GKE cluster, Falco runtime alerts from the nodes, and the findings of the gke-kubernetes, falco and gcp rules. Managed from Git.
+queries:
+  k8s: service.name:"k8s.io"
+  human: service.name:"k8s.io" and not user.name:system\:* and not user.name:*@container-engine-robot.iam.gserviceaccount.com and not user.name:kubelet-nodepool-bootstrap
+  exec: service.name:"k8s.io" and event.code:(io.k8s.core.v1.pods.exec.create or io.k8s.core.v1.pods.exec.get or io.k8s.core.v1.pods.attach.create or io.k8s.core.v1.pods.attach.get or io.k8s.core.v1.pods.ephemeralcontainers.patch or io.k8s.core.v1.pods.ephemeralcontainers.update)
+  rbac: service.name:"k8s.io" and event.code:io.k8s.authorization.rbac.v1.*
+  credentials: service.name:"k8s.io" and (event.code:io.k8s.core.v1.secrets.* or event.code:io.k8s.core.v1.serviceaccounts.* or event.code:io.k8s.certificates.*)
+  falco: rule.ruleset:"falco"
+panels:
+  - id: findings-total
+    title: Kubernetes findings
+    type: metric
+    index: findings
+    query: k8s
+    w: 12
+    h: 8
+    metrics:
+      - type: count
+        label: Findings
+      - type: cardinality
+        field: wazuh.rule.title
+        label: Rules matched
+  - id: findings-by-level
+    title: Findings by level
+    type: pie
+    index: findings
+    query: k8s
+    w: 12
+    h: 8
+    terms:
+      - field: wazuh.rule.level
+        size: 5
+  - id: findings-over-time
+    title: Findings over time by level
+    type: line
+    index: findings
+    query: k8s
+    w: 24
+    h: 8
+    split:
+      field: wazuh.rule.level
+      size: 5
+  - id: findings-by-rule
+    title: Findings by rule
+    type: table
+    index: findings
+    query: k8s
+    w: 24
+    h: 12
+    terms:
+      - field: wazuh.rule.title
+        size: 25
+        label: Rule
+      - field: wazuh.rule.level
+        size: 5
+        label: Level
+  - id: findings-latest
+    title: Latest Kubernetes findings
+    type: search
+    index: findings
+    query: k8s
+    w: 24
+    h: 12
+    columns:
+      - wazuh.rule.level
+      - wazuh.rule.title
+      - user.name
+      - event.code
+      - orchestrator.namespace
+      - orchestrator.resource.name
+      - source.ip
+  - id: human-by-user
+    title: Human and workload actions by principal
+    type: table
+    index: events
+    query: human
+    w: 24
+    h: 12
+    terms:
+      - field: user.name
+        size: 20
+        label: Principal
+      - field: event.code
+        size: 10
+        label: Method
+  - id: human-by-ip
+    title: Human and workload actions by source IP
+    type: table
+    index: events
+    query: human
+    w: 24
+    h: 12
+    terms:
+      - field: source.ip
+        size: 20
+        label: Source IP
+      - field: user.name
+        size: 10
+        label: Principal
+  - id: human-latest
+    title: Latest human and workload actions
+    type: search
+    index: events
+    query: human
+    w: 48
+    h: 12
+    columns:
+      - user.name
+      - event.code
+      - orchestrator.namespace
+      - orchestrator.resource.name
+      - event.outcome
+      - source.ip
+  - id: exec-sessions
+    title: Exec, attach and debug sessions
+    type: search
+    index: events
+    query: exec
+    w: 24
+    h: 12
+    columns:
+      - user.name
+      - event.code
+      - orchestrator.namespace
+      - orchestrator.resource.name
+      - source.ip
+  - id: rbac-changes
+    title: RBAC changes
+    type: search
+    index: events
+    query: rbac
+    w: 24
+    h: 12
+    columns:
+      - user.name
+      - event.code
+      - orchestrator.namespace
+      - orchestrator.resource.name
+      - event.outcome
+  - id: credential-operations
+    title: Secrets, service account and certificate operations
+    type: search
+    index: events
+    query: credentials
+    w: 48
+    h: 12
+    columns:
+      - user.name
+      - event.code
+      - orchestrator.namespace
+      - orchestrator.resource.name
+      - event.outcome
+  - id: events-over-time
+    title: Kubernetes API writes over time by method
+    type: line
+    index: events
+    query: k8s
+    w: 32
+    h: 10
+    split:
+      field: event.code
+      size: 8
+  - id: events-by-namespace
+    title: Writes by namespace
+    type: horizontal_bar
+    index: events
+    query: k8s
+    w: 16
+    h: 10
+    terms:
+      - field: orchestrator.namespace
+        size: 10
+        label: Namespace
+  - id: events-top-methods
+    title: Top methods
+    type: horizontal_bar
+    index: events
+    query: k8s
+    w: 24
+    h: 12
+    terms:
+      - field: event.code
+        size: 15
+        label: Method
+  - id: events-failed
+    title: Denied or failed writes by principal
+    type: table
+    index: events
+    query: k8s
+    filter: event.outcome:failure
+    w: 24
+    h: 12
+    terms:
+      - field: user.name
+        size: 15
+        label: Principal
+      - field: event.code
+        size: 10
+        label: Method
+  - id: falco-findings-by-level
+    title: Falco findings by level
+    type: pie
+    index: security-findings
+    query: falco
+    w: 12
+    h: 10
+    terms:
+      - field: wazuh.rule.level
+        size: 5
+  - id: falco-over-time
+    title: Falco alerts over time by rule
+    type: line
+    index: security-events
+    query: falco
+    w: 36
+    h: 10
+    split:
+      field: rule.name
+      size: 8
+  - id: falco-top-rules
+    title: Top Falco rules
+    type: horizontal_bar
+    index: security-events
+    query: falco
+    w: 24
+    h: 12
+    terms:
+      - field: rule.name
+        size: 15
+        label: Falco rule
+  - id: falco-by-workload
+    title: Falco alerts by workload
+    type: table
+    index: security-events
+    query: falco
+    w: 24
+    h: 12
+    terms:
+      - field: orchestrator.namespace
+        size: 10
+        label: Namespace
+      - field: orchestrator.resource.name
+        size: 10
+        label: Pod
+      - field: container.image.name
+        size: 5
+        label: Image
+  - id: falco-latest
+    title: Latest Falco alerts
+    type: search
+    index: security-events
+    query: falco
+    w: 48
+    h: 14
+    columns:
+      - log.level
+      - rule.name
+      - orchestrator.namespace
+      - orchestrator.resource.name
+      - container.image.name
+      - process.command_line
+      - user.name
+      - host.hostname

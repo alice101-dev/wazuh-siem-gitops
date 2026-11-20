@@ -1,6 +1,9 @@
 """Reconcile the custom detections and the dashboard of Wazuh from the content packs and dashboard.json.
 
-Each content pack (every *.json here with an "integration" key) is a user-managed integration of
+The packs and the dashboard are YAML in Git; an init container converts them to JSON in CONFIG_DIR,
+so this script needs nothing beyond the standard library.
+
+Each content pack (every *.json there with an "integration" key) is a user-managed integration of
 the content manager with its decoders and Sigma rules. They are written to the draft space,
 promoted draft -> test -> custom, and run by a Ruleset Management detector of their own, because
 the standard detectors only run standard rules. A pack may name the root decoder of the custom

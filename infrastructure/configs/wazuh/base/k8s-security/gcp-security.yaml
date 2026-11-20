@@ -1,0 +1,740 @@
+integration:
+  title: gcp-security
+  category: cloud-services
+  description: High-signal detections on the Google Cloud audit logs of the project, raised above the levels of the standard gcp ruleset.
+detector:
+  name: gcp-security
+  indices:
+    - wazuh-events-v5-cloud-services
+  interval_minutes: 1
+trusted:
+  trusted_google_agent:
+    user.name|endswith:
+      - '@container-engine-robot.iam.gserviceaccount.com'
+      - '@cloudservices.gserviceaccount.com'
+      - '@compute-system.iam.gserviceaccount.com'
+      - '@gcp-sa-pubsub.iam.gserviceaccount.com'
+      - '@gcp-sa-logging.iam.gserviceaccount.com'
+rules:
+  - title: GCP service account key created
+    description: 'A key was created or uploaded for a service account. This project is keyless: every Google Cloud access goes through Workload Identity, so a key is a persistent credential that should not exist.'
+    level: critical
+    selection:
+      event.code:
+        - google.iam.admin.v1.CreateServiceAccountKey
+        - google.iam.admin.v1.UploadServiceAccountKey
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP project IAM policy changed
+    description: 'The IAM policy of the project was changed: roles granted or revoked, or the Data Access audit configuration changed.'
+    level: high
+    selection:
+      service.name: cloudresourcemanager.googleapis.com
+      event.code: SetIamPolicy
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP service account IAM policy changed
+    description: Who may use or impersonate a service account changed, for example a grant of roles/iam.serviceAccountTokenCreator.
+    level: high
+    selection:
+      event.code: google.iam.admin.v1.SetIAMPolicy
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP service account impersonated
+    description: A principal minted an access or ID token, or signed with a service account through the IAM Credentials API, acting as that service account.
+    level: high
+    selection:
+      service.name: iamcredentials.googleapis.com
+      event.code:
+        - GenerateAccessToken
+        - GenerateIdToken
+        - SignBlob
+        - SignJwt
+    mitre:
+      tactic:
+        - TA0008
+        - Lateral Movement
+      technique:
+        - T1550
+        - Use Alternate Authentication Material
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP firewall rule created or changed
+    description: A VPC firewall rule was created or changed, which can open a port of the network to the internet.
+    level: high
+    selection:
+      service.name: compute.googleapis.com
+      event.code:
+        - v1.compute.firewalls.insert
+        - v1.compute.firewalls.patch
+        - v1.compute.firewalls.update
+        - beta.compute.firewalls.insert
+        - beta.compute.firewalls.patch
+        - beta.compute.firewalls.update
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP storage bucket IAM policy changed
+    description: The IAM policy of a Cloud Storage bucket changed, how a bucket is made public (allUsers) or shared outside the project.
+    level: high
+    selection:
+      event.code: storage.setIamPermissions
+    mitre:
+      tactic:
+        - TA0010
+        - Exfiltration
+      technique:
+        - T1530
+        - Data from Cloud Storage
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP log sink created, changed or deleted
+    description: A Log Router sink was created or changed, which can copy the logs of the project elsewhere or stop them reaching the SIEM.
+    level: high
+    selection:
+      event.code:
+        - google.logging.v2.ConfigServiceV2.CreateSink
+        - google.logging.v2.ConfigServiceV2.UpdateSink
+        - google.logging.v2.ConfigServiceV2.DeleteSink
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP secret read outside External Secrets
+    description: A Secret Manager secret version was read by a principal other than External Secrets.
+    level: high
+    selection:
+      event.code: google.cloud.secretmanager.v1.SecretManagerService.AccessSecretVersion
+    mitre:
+      tactic:
+        - TA0006
+        - Credential Access
+      technique:
+        - T1555
+        - Credentials from Password Stores
+    exclude:
+      failed:
+        event.outcome: failure
+      external_secrets:
+        user.id|endswith: .svc.id.goog[external-secrets/external-secrets]
+  - title: GCP KMS key version disabled or destroyed
+    description: 'A version of a Cloud KMS key was disabled, re-enabled or scheduled for destruction. The cluster secrets and every disk are encrypted with these keys: disabling one makes the data unreadable.'
+    level: critical
+    selection:
+      service.name: cloudkms.googleapis.com
+      event.code:
+        - DestroyCryptoKeyVersion
+        - UpdateCryptoKeyVersion
+    mitre:
+      tactic:
+        - TA0040
+        - Impact
+      technique:
+        - T1485
+        - Data Destruction
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP instance or project metadata changed
+    description: The metadata of the project or of a VM changed, how SSH keys are planted on every VM, the GKE nodes included, or a startup script is set.
+    level: high
+    selection:
+      service.name: compute.googleapis.com
+      event.code:
+        - v1.compute.projects.setCommonInstanceMetadata
+        - v1.compute.instances.setMetadata
+        - beta.compute.projects.setCommonInstanceMetadata
+        - beta.compute.instances.setMetadata
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP storage HMAC key created
+    description: 'An HMAC key was created for Cloud Storage: a long-lived, S3-compatible credential that bypasses Workload Identity.'
+    level: critical
+    selection:
+      event.code: storage.hmacKeys.create
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP Pub/Sub topic or subscription changed
+    description: A Pub/Sub topic or subscription was created, changed or deleted; the SIEM receives every log through Pub/Sub, so this can divert or cut it.
+    level: high
+    selection:
+      service.name: pubsub.googleapis.com
+      event.code:
+        - google.pubsub.v1.Publisher.CreateTopic
+        - google.pubsub.v1.Publisher.UpdateTopic
+        - google.pubsub.v1.Publisher.DeleteTopic
+        - google.pubsub.v1.Publisher.DetachSubscription
+        - google.pubsub.v1.Subscriber.CreateSubscription
+        - google.pubsub.v1.Subscriber.UpdateSubscription
+        - google.pubsub.v1.Subscriber.DeleteSubscription
+        - google.pubsub.v1.Subscriber.ModifyPushConfig
+        - google.pubsub.v1.Subscriber.Seek
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP API enabled or disabled
+    description: A Google Cloud API was enabled or disabled on the project, how unused services are switched on for abuse (compute for mining) or logging and security services are switched off.
+    level: high
+    selection:
+      event.code:
+        - google.api.serviceusage.v1.ServiceUsage.EnableService
+        - google.api.serviceusage.v1.ServiceUsage.DisableService
+        - google.api.serviceusage.v1.ServiceUsage.BatchEnableServices
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+    exclude:
+      failed:
+        event.outcome: failure
+  - title: GCP log exclusion or log bucket changed
+    level: critical
+    description: 'A log exclusion was created, changed or deleted, or a log bucket or the logging settings were changed: how an attacker stops logs being written or kept without touching the sinks.'
+    selection:
+      event.code:
+        - google.logging.v2.ConfigServiceV2.CreateExclusion
+        - google.logging.v2.ConfigServiceV2.UpdateExclusion
+        - google.logging.v2.ConfigServiceV2.DeleteExclusion
+        - google.logging.v2.ConfigServiceV2.UpdateBucket
+        - google.logging.v2.ConfigServiceV2.UpdateBucketAsync
+        - google.logging.v2.ConfigServiceV2.DeleteBucket
+        - google.logging.v2.ConfigServiceV2.UpdateSettings
+        - google.logging.v2.ConfigServiceV2.UpdateCmekSettings
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+  - title: GKE cluster configuration changed
+    level: critical
+    description: 'The GKE cluster itself was changed or deleted: control plane access, authorized networks, network policy, logging, monitoring, legacy ABAC, add-ons or credential rotation.'
+    selection:
+      service.name: container.googleapis.com
+      event.code:
+        - google.container.v1.ClusterManager.UpdateCluster
+        - google.container.v1beta1.ClusterManager.UpdateCluster
+        - google.container.v1.ClusterManager.UpdateMaster
+        - google.container.v1beta1.ClusterManager.UpdateMaster
+        - google.container.v1.ClusterManager.SetMasterAuth
+        - google.container.v1beta1.ClusterManager.SetMasterAuth
+        - google.container.v1.ClusterManager.SetLegacyAbac
+        - google.container.v1beta1.ClusterManager.SetLegacyAbac
+        - google.container.v1.ClusterManager.SetNetworkPolicy
+        - google.container.v1beta1.ClusterManager.SetNetworkPolicy
+        - google.container.v1.ClusterManager.SetLoggingService
+        - google.container.v1beta1.ClusterManager.SetLoggingService
+        - google.container.v1.ClusterManager.SetMonitoringService
+        - google.container.v1beta1.ClusterManager.SetMonitoringService
+        - google.container.v1.ClusterManager.SetAddonsConfig
+        - google.container.v1beta1.ClusterManager.SetAddonsConfig
+        - google.container.v1.ClusterManager.StartIPRotation
+        - google.container.v1beta1.ClusterManager.StartIPRotation
+        - google.container.v1.ClusterManager.CompleteIPRotation
+        - google.container.v1beta1.ClusterManager.CompleteIPRotation
+        - google.container.v1.ClusterManager.DeleteCluster
+        - google.container.v1beta1.ClusterManager.DeleteCluster
+    exclude:
+      failed:
+        event.outcome: failure
+      operation_end:
+        service.name: container.googleapis.com
+        event.outcome: unknown
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+  - title: GCP compute capacity added
+    level: high
+    description: 'A VM or a GKE node pool was created, or a node pool was resized or reconfigured, by a person or workload rather than GKE itself: how stolen access is turned into crypto mining.'
+    selection:
+      event.code:
+        - v1.compute.instances.insert
+        - beta.compute.instances.insert
+        - google.container.v1.ClusterManager.CreateNodePool
+        - google.container.v1beta1.ClusterManager.CreateNodePool
+        - google.container.v1.ClusterManager.UpdateNodePool
+        - google.container.v1beta1.ClusterManager.UpdateNodePool
+        - google.container.v1.ClusterManager.SetNodePoolSize
+        - google.container.v1beta1.ClusterManager.SetNodePoolSize
+        - google.container.v1.ClusterManager.SetNodePoolAutoscaling
+        - google.container.v1beta1.ClusterManager.SetNodePoolAutoscaling
+        - google.container.v1.ClusterManager.SetNodePoolManagement
+        - google.container.v1beta1.ClusterManager.SetNodePoolManagement
+    exclude:
+      failed:
+        event.outcome: failure
+      operation_end:
+        service.name: container.googleapis.com
+        event.outcome: unknown
+    mitre:
+      tactic:
+        - TA0040
+        - Impact
+      technique:
+        - T1496
+        - Resource Hijacking
+  - title: GCP workload identity federation changed
+    level: critical
+    description: 'A workload identity pool or provider was created, changed or restored: an identity outside Google Cloud (GitHub, AWS, any OIDC issuer) can then act as a service account without a key.'
+    selection:
+      service.name: iam.googleapis.com
+      event.code|endswith:
+        - .CreateWorkloadIdentityPool
+        - .UpdateWorkloadIdentityPool
+        - .UndeleteWorkloadIdentityPool
+        - .CreateWorkloadIdentityPoolProvider
+        - .UpdateWorkloadIdentityPoolProvider
+        - .UndeleteWorkloadIdentityPoolProvider
+        - .CreateWorkloadIdentityPoolProviderKey
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP custom role or service account created
+    level: high
+    description: 'A custom IAM role was created, changed or restored, or a service account was created, enabled or restored: a role can bundle the permissions to escalate, and a new account is a place to keep access.'
+    selection:
+      event.code:
+        - google.iam.admin.v1.CreateRole
+        - google.iam.admin.v1.UpdateRole
+        - google.iam.admin.v1.UndeleteRole
+        - google.iam.admin.v1.CreateServiceAccount
+        - google.iam.admin.v1.EnableServiceAccount
+        - google.iam.admin.v1.UndeleteServiceAccount
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1136
+        - Create Account
+  - title: GCP KMS key IAM policy changed
+    level: high
+    description: Who may use or manage a Cloud KMS key ring or key changed; the keys encrypt the cluster secrets and disks.
+    selection:
+      service.name: cloudkms.googleapis.com
+      event.code: SetIamPolicy
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP VPC routing or peering changed
+    level: high
+    description: 'A route, Cloud Router or NAT, VPC peering or subnet was created, changed or deleted: how traffic is redirected, a private network is bridged to another one, or flow logs are switched off.'
+    selection:
+      service.name: compute.googleapis.com
+      event.code|endswith:
+        - compute.routes.insert
+        - compute.routes.delete
+        - compute.routers.insert
+        - compute.routers.patch
+        - compute.routers.update
+        - compute.routers.delete
+        - compute.networks.addPeering
+        - compute.networks.updatePeering
+        - compute.networks.removePeering
+        - compute.networks.patch
+        - compute.subnetworks.patch
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1599
+        - Network Boundary Bridging
+  - title: GCP API key created or changed
+    level: critical
+    description: 'An API key was created, changed (restrictions removed or widened) or restored on the Credentials page or with gcloud: a static secret that never expires and needs no identity to use.'
+    selection:
+      service.name: apikeys.googleapis.com
+      event.code|endswith:
+        - .CreateKey
+        - .UpdateKey
+        - .UndeleteKey
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP API key string read
+    level: high
+    description: 'The secret string of an API key was read (Show key in the console, gcloud services api-keys get-key-string): how an existing key is stolen.'
+    selection:
+      service.name: apikeys.googleapis.com
+      event.code|endswith: .GetKeyString
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0006
+        - Credential Access
+      technique:
+        - T1552
+        - Unsecured Credentials
+  - title: GCP OAuth client created or changed
+    level: high
+    description: 'An OAuth client ID or consent screen was created, changed or deleted on the Credentials page: an app that can ask users for access to their Google data.'
+    selection:
+      service.name: clientauthconfig.googleapis.com
+      event.code|endswith:
+        - .CreateClient
+        - .UpdateClient
+        - .DeleteClient
+        - .CreateBrand
+        - .UpdateBrand
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP OS Login SSH key added
+    level: high
+    description: 'An SSH public key was added to an OS Login profile: SSH access to every VM that trusts that account.'
+    selection:
+      service.name: oslogin.googleapis.com
+      event.code|endswith:
+        - .ImportSshPublicKey
+        - .CreateSshPublicKey
+        - .UpdateSshPublicKey
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0003
+        - Persistence
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP organization policy changed
+    level: critical
+    description: An organization policy (a guardrail such as no service account keys, no public IPs or allowed regions) was created, changed or removed.
+    selection:
+      event.code:
+        - google.cloud.orgpolicy.v2.OrgPolicy.CreatePolicy
+        - google.cloud.orgpolicy.v2.OrgPolicy.UpdatePolicy
+        - google.cloud.orgpolicy.v2.OrgPolicy.DeletePolicy
+        - SetOrgPolicy
+        - ClearOrgPolicy
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+  - title: GCP IAM deny policy changed
+    level: critical
+    description: An IAM deny policy, which overrides any grant, was created, changed or deleted.
+    selection:
+      event.code:
+        - google.iam.v2.Policies.CreatePolicy
+        - google.iam.v2.Policies.UpdatePolicy
+        - google.iam.v2.Policies.DeletePolicy
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+  - title: GCP alerting or security contacts tampered
+    level: high
+    description: 'A Cloud Monitoring alert policy or notification channel was changed or deleted, or the essential (security) contacts changed: how an attacker silences the alarms.'
+    selection:
+      event.code:
+        - google.monitoring.v3.AlertPolicyService.UpdateAlertPolicy
+        - google.monitoring.v3.AlertPolicyService.DeleteAlertPolicy
+        - google.monitoring.v3.NotificationChannelService.UpdateNotificationChannel
+        - google.monitoring.v3.NotificationChannelService.DeleteNotificationChannel
+        - google.cloud.essentialcontacts.v1.EssentialContactsService.CreateContact
+        - google.cloud.essentialcontacts.v1.EssentialContactsService.UpdateContact
+        - google.cloud.essentialcontacts.v1.EssentialContactsService.DeleteContact
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0005
+        - Defense Evasion
+      technique:
+        - T1562
+        - Impair Defenses
+  - title: GCP disk snapshot or image created or shared
+    level: high
+    description: 'A snapshot, image or machine image of a disk was created, or one was shared through its IAM policy: how a whole disk, secrets included, is copied out of the project.'
+    selection:
+      service.name: compute.googleapis.com
+      event.code|endswith:
+        - compute.snapshots.insert
+        - compute.disks.createSnapshot
+        - compute.images.insert
+        - compute.machineImages.insert
+        - compute.images.setIamPolicy
+        - compute.snapshots.setIamPolicy
+        - compute.machineImages.setIamPolicy
+        - compute.disks.setIamPolicy
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0010
+        - Exfiltration
+      technique:
+        - T1537
+        - Transfer Data to Cloud Account
+  - title: GCP secret IAM policy changed
+    level: high
+    description: Who may read or manage a Secret Manager secret changed.
+    selection:
+      service.name: secretmanager.googleapis.com
+      event.code|endswith: .SetIamPolicy
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP secret replaced, disabled or destroyed
+    level: high
+    description: 'A secret got a new version, or a version was disabled or destroyed, or the secret was deleted: a credential the cluster loads (the Slack webhook, for one) replaced or removed.'
+    selection:
+      service.name: secretmanager.googleapis.com
+      event.code|endswith:
+        - .AddSecretVersion
+        - .DisableSecretVersion
+        - .DestroySecretVersion
+        - .DeleteSecret
+        - .UpdateSecret
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0040
+        - Impact
+      technique:
+        - T1485
+        - Data Destruction
+  - title: GCP Artifact Registry IAM policy changed
+    level: high
+    description: 'Who may pull from or push to an Artifact Registry repository changed: a push grant lets a poisoned image replace the SIEM collector.'
+    selection:
+      service.name: artifactregistry.googleapis.com
+      event.code|endswith: .SetIamPolicy
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0001
+        - Initial Access
+      technique:
+        - T1195
+        - Supply Chain Compromise
+  - title: GCP BigQuery access changed
+    level: high
+    description: The access list or IAM policy of a BigQuery dataset or table changed, how data is shared out of the project.
+    selection:
+      service.name: bigquery.googleapis.com
+      event.code|endswith:
+        - .SetIamPolicy
+        - .PatchDataset
+        - .UpdateDataset
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0010
+        - Exfiltration
+      technique:
+        - T1537
+        - Transfer Data to Cloud Account
+  - title: GCP VM service account changed
+    level: high
+    description: 'The service account or scopes of a VM were changed: the VM, and whoever runs code on it, gets that account''s access.'
+    selection:
+      service.name: compute.googleapis.com
+      event.code|endswith: compute.instances.setServiceAccount
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0004
+        - Privilege Escalation
+      technique:
+        - T1098
+        - Account Manipulation
+  - title: GCP serverless code or build deployed
+    level: high
+    description: 'A Cloud Run service or job, a Cloud Function, a Cloud Build build or trigger, or a Cloud Scheduler job was created or changed: code that runs as a service account, outside the cluster and its runtime security.'
+    selection:
+      event.code|endswith:
+        - run.v1.Services.CreateService
+        - run.v1.Services.ReplaceService
+        - run.v2.Services.CreateService
+        - run.v2.Services.UpdateService
+        - run.v2.Jobs.CreateJob
+        - run.v2.Jobs.UpdateJob
+        - run.v2.Jobs.RunJob
+        - FunctionService.CreateFunction
+        - FunctionService.UpdateFunction
+        - CloudFunctionsService.CreateFunction
+        - CloudFunctionsService.UpdateFunction
+        - CloudBuild.CreateBuild
+        - CloudBuild.CreateBuildTrigger
+        - CloudBuild.RunBuildTrigger
+        - CloudScheduler.CreateJob
+        - CloudScheduler.UpdateJob
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0002
+        - Execution
+      technique:
+        - T1648
+        - Serverless Execution
+  - title: GCP DNS changed
+    level: high
+    description: 'A Cloud DNS zone, record set or DNS policy was created, changed or deleted: how traffic for a name is redirected.'
+    selection:
+      service.name: dns.googleapis.com
+      event.code|endswith:
+        - dns.changes.create
+        - dns.managedZones.create
+        - dns.managedZones.patch
+        - dns.managedZones.update
+        - dns.managedZones.delete
+        - dns.policies.create
+        - dns.policies.patch
+        - dns.policies.update
+        - dns.resourceRecordSets.create
+        - dns.resourceRecordSets.patch
+        - dns.resourceRecordSets.delete
+    exclude:
+      failed:
+        event.outcome: failure
+    mitre:
+      tactic:
+        - TA0040
+        - Impact
+      technique:
+        - T1565
+        - Data Manipulation

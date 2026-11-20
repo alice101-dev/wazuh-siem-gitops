@@ -38,6 +38,32 @@ spec:
         - name: config
           configMap:
             name: wazuh-k8s-security
+        - name: content
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Mi
+      initContainers:
+        - name: yaml-to-json
+          image: mikefarah/yq:4.54.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              for file in /config/*.yaml; do
+                yq -p yaml -o json "$file" > "/content/$(basename "$file" .yaml).json"
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: config, mountPath: /config, readOnly: true }
+            - { name: content, mountPath: /content }
       containers:
         - name: reconcile
           image: python:3.13.7-alpine3.22
@@ -45,6 +71,8 @@ spec:
           env:
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+            - name: CONFIG_DIR
+              value: /content
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -57,3 +85,4 @@ spec:
             - { name: credentials, mountPath: /credentials, readOnly: true }
             - { name: ca, mountPath: /ca, readOnly: true }
             - { name: config, mountPath: /config, readOnly: true }
+            - { name: content, mountPath: /content, readOnly: true }
