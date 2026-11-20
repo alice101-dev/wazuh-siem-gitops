@@ -129,6 +129,15 @@ from. A NetworkPolicy opens the metadata server (`169.254.169.254`, ports 80 and
 
 A Google Cloud API call reaches Slack in about three minutes. Findings of level low and medium stay in the dashboard.
 
+Findings as they arrive in Slack: Kubernetes API actions from the GKE audit log, and Falco detections from inside
+containers, each with who did it, where, and the MITRE technique.
+
+![Exec into a pod, a pod created outside GitOps, and a sensitive file read](docs/screenshots/slack-gke-audit-and-falco.png)
+
+![A Deployment created outside GitOps, the Falco DaemonSet deleted, and a reverse shell from a dropped binary](docs/screenshots/slack-gke-gitops-and-falco-critical.png)
+
+![A container reading the node service account token from the metadata server, and an untrusted image started](docs/screenshots/slack-falco-metadata-server.png)
+
 ## Kubernetes security
 
 GKE runs the Kubernetes API server, so its audit log is not a file on a node: GKE writes it to Cloud Audit
