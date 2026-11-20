@@ -134,9 +134,11 @@ A Google Cloud API call reaches Slack in about three minutes. Findings of level 
 <details>
 <summary>More Slack alerts</summary>
 
+![A ClusterRole that allows privilege escalation, a Role with wildcard permissions, a Secret deleted outside GitOps, and the indexer admin TLS Secret read](docs/screenshots/slack-gke-rbac-and-secrets.png)
+
 ![A container reading /etc/shadow, with the full Falco output](docs/screenshots/slack-falco-read-sensitive-file.png)
 
-![A container reading the node service account token from the metadata server, and an untrusted image started](docs/screenshots/slack-falco-metadata-server.png)
+![A container requesting a Google access token from the metadata server, and an untrusted image started](docs/screenshots/slack-falco-metadata-server.png)
 
 </details>
 
